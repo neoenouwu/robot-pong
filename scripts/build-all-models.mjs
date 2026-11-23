@@ -5,8 +5,8 @@ import { verifyAllModels } from './verify-models.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const generators = [
-  'build-sentinel.mjs',
-  'build-sentinel-reference.mjs',
+  'build-robot.mjs',
+  'build-robot-reference.mjs',
   'build-props.mjs',
   'build-arena.mjs',
   'build-cityscape.mjs',

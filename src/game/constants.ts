@@ -1,6 +1,6 @@
 /**
- * Shared metric constants (Right-handed Y-up, meters) for Sentinel Pong.
- * Matches exact dimensions of public/models/table.glb, paddle.glb, ball.glb, and sentinel.glb.
+ * Shared metric constants (Right-handed Y-up, meters) for Robot Pong.
+ * Matches exact dimensions of public/models/table.glb, paddle.glb, ball.glb, and robot.glb.
  */
 export const TABLE = {
   LENGTH: 2.74,
@@ -35,7 +35,7 @@ export const PLAYER_PADDLE = {
   SWEET_SPOT_RADIUS: 0.09,
 } as const;
 
-export const SENTINEL = {
+export const ROBOT = {
   HOME_POS: { x: 0, y: 2.08, z: -2.42 },
   PADDLE_BASE_Z: -1.36,
   PADDLE_SCALE: 2.1, // Iconic towering boss paddle scale matching the artwork
@@ -53,7 +53,7 @@ export interface ThreatPhaseConfig {
   phase: number;
   name: string;
   minScore: number;
-  sentinelSpeed: number; // m/s lateral tracking
+  robotSpeed: number; // m/s lateral tracking
   reactionDelay: number; // seconds before AI reacts to a new player shot
   spinBlindness: number; // 0..1 fraction of lateral Magnus curve the AI misreads
   returnSpeed: number; // base shot speed
@@ -69,7 +69,7 @@ export const THREAT_PHASES: readonly ThreatPhaseConfig[] = [
     phase: 1,
     name: 'RECON',
     minScore: 0,
-    sentinelSpeed: 1.42,
+    robotSpeed: 1.42,
     reactionDelay: 0.22,
     spinBlindness: 0.55,
     returnSpeed: 4.3,
@@ -83,7 +83,7 @@ export const THREAT_PHASES: readonly ThreatPhaseConfig[] = [
     phase: 2,
     name: 'HUNTER',
     minScore: 1800,
-    sentinelSpeed: 1.78,
+    robotSpeed: 1.78,
     reactionDelay: 0.16,
     spinBlindness: 0.42,
     returnSpeed: 5.0,
@@ -97,7 +97,7 @@ export const THREAT_PHASES: readonly ThreatPhaseConfig[] = [
     phase: 3,
     name: 'OVERCLOCK',
     minScore: 4800,
-    sentinelSpeed: 2.12,
+    robotSpeed: 2.12,
     reactionDelay: 0.12,
     spinBlindness: 0.3,
     returnSpeed: 5.8,
@@ -111,7 +111,7 @@ export const THREAT_PHASES: readonly ThreatPhaseConfig[] = [
     phase: 4,
     name: 'ZION BREACH',
     minScore: 9500,
-    sentinelSpeed: 2.45,
+    robotSpeed: 2.45,
     reactionDelay: 0.08,
     spinBlindness: 0.2,
     returnSpeed: 6.5,
@@ -128,7 +128,7 @@ export const DUEL_DIFFICULTIES: Record<Difficulty, ThreatPhaseConfig> = {
     phase: 1,
     name: 'EASY',
     minScore: 0,
-    sentinelSpeed: 1.24,
+    robotSpeed: 1.24,
     reactionDelay: 0.25,
     spinBlindness: 0.65,
     returnSpeed: 4.15,
@@ -142,7 +142,7 @@ export const DUEL_DIFFICULTIES: Record<Difficulty, ThreatPhaseConfig> = {
     phase: 2,
     name: 'MEDIUM',
     minScore: 0,
-    sentinelSpeed: 1.68,
+    robotSpeed: 1.68,
     reactionDelay: 0.17,
     spinBlindness: 0.45,
     returnSpeed: 5.05,
@@ -156,7 +156,7 @@ export const DUEL_DIFFICULTIES: Record<Difficulty, ThreatPhaseConfig> = {
     phase: 4,
     name: 'HARD',
     minScore: 0,
-    sentinelSpeed: 2.12,
+    robotSpeed: 2.12,
     reactionDelay: 0.11,
     spinBlindness: 0.28,
     returnSpeed: 6.05,
@@ -179,9 +179,9 @@ export function getThreatPhaseForScore(score: number): ThreatPhaseConfig {
 export const STORY_STAGE2_CONFIGS: Record<Difficulty, ThreatPhaseConfig> = {
   easy: {
     phase: 2,
-    name: 'APEX SENTINEL',
+    name: 'APEX ROBOT',
     minScore: 0,
-    sentinelSpeed: 1.56,
+    robotSpeed: 1.56,
     reactionDelay: 0.19,
     spinBlindness: 0.48,
     returnSpeed: 4.85,
@@ -193,9 +193,9 @@ export const STORY_STAGE2_CONFIGS: Record<Difficulty, ThreatPhaseConfig> = {
   },
   medium: {
     phase: 3,
-    name: 'APEX SENTINEL',
+    name: 'APEX ROBOT',
     minScore: 0,
-    sentinelSpeed: 1.98,
+    robotSpeed: 1.98,
     reactionDelay: 0.13,
     spinBlindness: 0.32,
     returnSpeed: 5.65,
@@ -207,9 +207,9 @@ export const STORY_STAGE2_CONFIGS: Record<Difficulty, ThreatPhaseConfig> = {
   },
   hard: {
     phase: 4,
-    name: 'APEX SENTINEL',
+    name: 'APEX ROBOT',
     minScore: 0,
-    sentinelSpeed: 2.38,
+    robotSpeed: 2.38,
     reactionDelay: 0.08,
     spinBlindness: 0.2,
     returnSpeed: 6.45,

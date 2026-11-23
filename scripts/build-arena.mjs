@@ -3,7 +3,7 @@
  * Outputs: public/models/arena_structure.glb
  *
  * Builds the massive dark dystopian cyberpunk industrial server hall surrounding
- * the Sentinel and table tennis table:
+ * the Robot and table tennis table:
  *  - Towering dark weathered steel I-beam & open-lattice girders flanking left/right
  *    (x = ±3.8m, ±6.4m, z = +4.0m..-13.0m, y = 0.0m..11.5m) with wide open vertical
  *    slots so emerald Matrix digital-rain walls blaze straight through.
@@ -1218,7 +1218,7 @@ function buildHangingCablesData() {
     { a: [-3.8, 5.1, -1.10], b: [-1.7, 8.4, -1.75], sag: 1.15, r: 0.048, swayZ: -0.15 },
     { a: [3.8, 5.2, -1.15], b: [1.8, 8.4, -1.85], sag: 1.18, r: 0.048, swayZ: -0.15 },
 
-    // --- Dense Canopy Sweeping Directly Above the Sentinel (z = -2.2..-4.8, y = 4.0..8.9m) ---
+    // --- Dense Canopy Sweeping Directly Above the Robot (z = -2.2..-4.8, y = 4.0..8.9m) ---
     { a: [-3.8, 5.8, -2.35], b: [3.8, 6.1, -2.75], sag: 1.55, r: 0.064, swayZ: -0.30 },
     { a: [-3.8, 5.65, -2.42], b: [3.8, 5.95, -2.82], sag: 1.50, r: 0.034, swayZ: -0.26 },
     { a: [-4.1, 7.2, -2.60], b: [4.2, 6.8, -3.45], sag: 2.20, r: 0.072, swayZ: -0.20 },
@@ -1800,7 +1800,7 @@ const sizeB = geomReport.worldBox
   .toArray()
   .map((n) => +n.toFixed(2));
 
-console.log('=== Sentinel Pong: Arena Structure GLB Built & Verified ===');
+console.log('=== Robot Pong: Arena Structure GLB Built & Verified ===');
 console.log(`Output:               ${exportStats.outputPath}`);
 console.log(`Build time:           ${elapsedMs} ms`);
 console.log(`File size:            ${inspectReport.sizeKB} KB (${exportStats.byteLength} bytes)`);

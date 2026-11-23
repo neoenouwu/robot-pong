@@ -71,10 +71,10 @@ export function inspectGLB(filePath) {
 }
 
 export const REQUIRED_MODELS = {
-  'sentinel.glb': {
+  'robot.glb': {
     minTriangles: 4000,
     requiredNodes: [
-      'SentinelRoot',
+      'RobotRoot',
       'Carapace',
       'MainEyeCore',
       'PaddleArm_Seg_00',
@@ -83,10 +83,10 @@ export const REQUIRED_MODELS = {
       'PaddleSocket',
     ],
   },
-  'sentinel_reference.glb': {
+  'robot_reference.glb': {
     minTriangles: 8000,
     requiredNodes: [
-      'SentinelRoot',
+      'RobotRoot',
       'Carapace',
       'MainEyeCore',
       'SubEyes',

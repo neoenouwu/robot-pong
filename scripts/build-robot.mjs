@@ -1,7 +1,7 @@
 /**
- * Procedural Hero 3D Boss Model Builder — Sentinel (`public/models/sentinel.glb`)
+ * Procedural Hero 3D Boss Model Builder — Robot (`public/models/robot.glb`)
  *
- * Constructs a high-detail, Matrix-inspired armored Sentinel octopus-robot:
+ * Constructs a high-detail, Matrix-inspired armored octopus-robot:
  * - Sculpted multi-plate overlapping gunmetal carapace (~2.0m W x 0.95m H x 1.75m D)
  *   with bolted dorsal ribs, spine crest, hydraulic vents, shoulder sockets,
  *   mechanical reactor underbelly, and hanging metallic cable tendrils.
@@ -28,7 +28,7 @@ import {
 } from './glb-builder.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const OUTPUT_PATH = path.resolve(__dirname, '../public/models/sentinel.glb');
+const OUTPUT_PATH = path.resolve(__dirname, '../public/models/robot.glb');
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG & Math Helpers
@@ -845,7 +845,7 @@ function createMaterials() {
 
   const armorPrimary = attachPBRTextures(
     new THREE.MeshStandardMaterial({
-      name: 'SentinelGunmetalArmor',
+      name: 'RobotGunmetalArmor',
       color: 0xffffff,
       roughness: 1.0,
       metalness: 1.0,
@@ -860,7 +860,7 @@ function createMaterials() {
 
   const armorDark = attachPBRTextures(
     new THREE.MeshStandardMaterial({
-      name: 'SentinelDarkSubframe',
+      name: 'RobotDarkSubframe',
       color: 0x5c6670,
       roughness: 1.0,
       metalness: 1.0,
@@ -874,14 +874,14 @@ function createMaterials() {
   );
 
   const chromeSteel = new THREE.MeshStandardMaterial({
-    name: 'SentinelHydraulicSteel',
+    name: 'RobotHydraulicSteel',
     color: 0x9aa6b4,
     metalness: 0.94,
     roughness: 0.22,
   });
 
   const darkCable = new THREE.MeshStandardMaterial({
-    name: 'SentinelBraidedCable',
+    name: 'RobotBraidedCable',
     color: 0x151a1e,
     metalness: 0.36,
     roughness: 0.56,
@@ -889,7 +889,7 @@ function createMaterials() {
 
   const mainEye = attachPBRTextures(
     new THREE.MeshStandardMaterial({
-      name: 'SentinelMainEyeIris',
+      name: 'RobotMainEyeIris',
       color: 0xffffff,
       roughness: 0.12,
       metalness: 0.08,
@@ -904,7 +904,7 @@ function createMaterials() {
 
   const subEye = attachPBRTextures(
     new THREE.MeshStandardMaterial({
-      name: 'SentinelSubEyeIris',
+      name: 'RobotSubEyeIris',
       color: 0xffffff,
       roughness: 0.14,
       metalness: 0.1,
@@ -918,7 +918,7 @@ function createMaterials() {
   );
 
   const ledCrimson = new THREE.MeshStandardMaterial({
-    name: 'SentinelCrimsonLED',
+    name: 'RobotCrimsonLED',
     color: 0x3a0505,
     emissive: 0xff1c0e,
     emissiveIntensity: 3.6,
@@ -1300,7 +1300,7 @@ function buildCarapace(mats, shoulderSockets) {
       cableGeoms.push(new THREE.TubeGeometry(curve, 10, 0.010 + rand() * 0.008, 6, false));
     }
 
-    // 9 dangling Sentinel wire tendrils beneath the underbelly (draping down to y ~ -0.68)
+    // 9 dangling robot wire tendrils beneath the underbelly (draping down to y ~ -0.68)
     for (let i = 0; i < 9; i++) {
       const side = i % 2 === 0 ? -1 : 1;
       const bx = side * (0.10 + rand() * 0.40);
@@ -1852,9 +1852,9 @@ function buildTentacleSegments(parentGroup, namePrefix, curve, segCount, rStart,
   }
 }
 
-function buildSentinelModel() {
+function buildRobotModel() {
   const root = new THREE.Group();
-  root.name = 'SentinelRoot';
+  root.name = 'RobotRoot';
 
   const mats = createMaterials();
 
@@ -2003,7 +2003,7 @@ function buildSentinelModel() {
 // Build, Self-Verify Kinematics/Bounds, and Export GLB
 // ---------------------------------------------------------------------------
 const t0 = performance.now();
-const { root, paddleCurve, bgSpecs, fingerTips } = buildSentinelModel();
+const { root, paddleCurve, bgSpecs, fingerTips } = buildRobotModel();
 root.updateMatrixWorld(true);
 
 const carapaceObj = root.getObjectByName('Carapace');
@@ -2065,7 +2065,7 @@ root.traverse((obj) => {
 const result = exportSceneToGLB(root, OUTPUT_PATH);
 const elapsedMs = (performance.now() - t0).toFixed(0);
 
-console.log(`Built Sentinel GLB in ${elapsedMs} ms -> ${result.outputPath}`);
+console.log(`Built Robot GLB in ${elapsedMs} ms -> ${result.outputPath}`);
 console.log(
   `  Size: ${(result.byteLength / 1024).toFixed(1)} KB | Nodes: ${result.nodeCount} | Unique Meshes: ${result.meshCount} | Materials: ${result.materialCount} | Textures: ${result.textureCount}`
 );
@@ -2077,7 +2077,7 @@ console.log(
   `  Carapace + Cables Bounds:     W=${carapaceSize.x.toFixed(2)}m H=${carapaceSize.y.toFixed(2)}m D=${carapaceSize.z.toFixed(2)}m (min=[${carapaceBox.min.toArray().map((n) => n.toFixed(2))}], max=[${carapaceBox.max.toArray().map((n) => n.toFixed(2))}])`
 );
 console.log(
-  `  Full Sentinel Bounds:         W=${fullSize.x.toFixed(2)}m H=${fullSize.y.toFixed(2)}m D=${fullSize.z.toFixed(2)}m`
+  `  Full Robot Bounds:         W=${fullSize.x.toFixed(2)}m H=${fullSize.y.toFixed(2)}m D=${fullSize.z.toFixed(2)}m`
 );
 console.log(
   `  PaddleClaw Pos: [${clawObj.position.toArray().map((n) => n.toFixed(3))}] | PaddleSocket Local: [${socketObj.position.toArray().map((n) => n.toFixed(3))}] | Socket World +Z: [${socketForward.toArray().map((n) => n.toFixed(3))}]`

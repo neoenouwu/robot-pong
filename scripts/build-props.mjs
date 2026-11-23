@@ -1,5 +1,5 @@
 /**
- * Procedural 3D Gameplay Prop Builder for "Sentinel Pong"
+ * Procedural 3D Gameplay Prop Builder for "Robot Pong"
  *
  * Generates 3 high-detail glTF 2.0 binary (.glb) models with embedded
  * procedural PBR textures (baseColor, metallicRoughness, normal):
@@ -2111,7 +2111,7 @@ function createBallTextures() {
               }
             }
 
-            // 4) Minimalist Matrix-Sentinel geometric eye/bar emblem in lower half of disc
+            // 4) Minimalist Matrix-robot geometric eye/bar emblem in lower half of disc
             const eyeD = Math.hypot(px * 0.72, (py + 0.105) * 1.35);
             const eyeRing =
               smoothstep(0.068, 0.078, eyeD) * (1.0 - smoothstep(0.104, 0.114, eyeD));

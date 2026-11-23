@@ -66,7 +66,7 @@ export function createApiMiddleware(dataFilePath = DEFAULT_DATA_FILE) {
     }
 
     if (pathname === '/api/health' && req.method === 'GET') {
-      sendJson(res, 200, { ok: true, service: 'sentinel-pong-leaderboard' });
+      sendJson(res, 200, { ok: true, service: 'robot-pong-leaderboard' });
       return true;
     }
 

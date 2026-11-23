@@ -496,7 +496,7 @@ export function exportSceneToGLB(rootObject, outputPath) {
   const gltf = {
     asset: {
       version: '2.0',
-      generator: 'SentinelPong Procedural 3D GLB Builder',
+      generator: 'RobotPong Procedural 3D GLB Builder',
     },
     scene: 0,
     scenes: [{ name: rootObject.name || 'Scene', nodes: [rootNodeIdx] }],

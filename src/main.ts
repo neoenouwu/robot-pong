@@ -8,9 +8,9 @@ import {
   type LeaderboardEntry,
 } from './services/leaderboardClient';
 
-const CALLSIGN_STORAGE_KEY = 'sentinel_pong_callsign';
-const ONE_TO_ONE_STORAGE_KEY = 'sentinel_pong_1to1_mode';
-const STAGE2_UNLOCKED_STORAGE_KEY = 'sentinel_pong_stage2_unlocked';
+const CALLSIGN_STORAGE_KEY = 'robot_pong_callsign';
+const ONE_TO_ONE_STORAGE_KEY = 'robot_pong_1to1_mode';
+const STAGE2_UNLOCKED_STORAGE_KEY = 'robot_pong_stage2_unlocked';
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -31,7 +31,7 @@ function escapeHtml(str: string): string {
   });
 }
 
-class SentinelPongApp {
+class RobotPongApp {
   private sceneManager: SceneManager | null = null;
   private engine: GameEngine | null = null;
 
@@ -76,7 +76,7 @@ class SentinelPongApp {
   private readonly hudArcadeShields = byId<HTMLDivElement>('hud-arcade-shields');
   private readonly hudDuelScore = byId<HTMLDivElement>('hud-duel-score');
   private readonly hudPPts = byId<HTMLElement>('hud-p-pts');
-  private readonly hudSPts = byId<HTMLElement>('hud-s-pts');
+  private readonly hudRPts = byId<HTMLElement>('hud-r-pts');
   private readonly hudFocusBar = byId<HTMLDivElement>('hud-focus-bar');
   private readonly hudSmashBar = byId<HTMLDivElement>('hud-smash-bar');
   private readonly hudServePrompt = byId<HTMLDivElement>('hud-serve-prompt');
@@ -376,7 +376,7 @@ class SentinelPongApp {
       this.hudArcadeShields.classList.add('hidden');
       this.hudDuelScore.classList.remove('hidden');
       this.hudPPts.textContent = String(snap.playerPoints);
-      this.hudSPts.textContent = String(snap.sentinelPoints);
+      this.hudRPts.textContent = String(snap.robotPoints);
     }
 
     // Serve prompt (bottom edge only — zero center-screen callouts)
@@ -421,7 +421,7 @@ class SentinelPongApp {
           : 'DEFEAT';
       this.goTitle.style.color = won ? 'var(--emerald)' : 'var(--crimson)';
       this.goFourthLabel.textContent = isStage2 ? 'STAGE 2' : 'SCORE';
-      this.goFourthVal.textContent = `${snap.playerPoints}-${snap.sentinelPoints}`;
+      this.goFourthVal.textContent = `${snap.playerPoints}-${snap.robotPoints}`;
       this.btnRetryStage2.classList.toggle('hidden', !(isStage2 && !won && this.stage2Unlocked));
     } else {
       this.goTitle.textContent = 'GAME OVER';
@@ -458,7 +458,7 @@ class SentinelPongApp {
       maxPhase: snap.maxPhaseReached,
       perfectHits: snap.perfectHits,
       difficulty: snap.mode === 'arcade' ? 'overdrive' : snap.difficulty,
-      matchScore: snap.mode === 'duel' ? `${snap.playerPoints}-${snap.sentinelPoints}` : undefined,
+      matchScore: snap.mode === 'duel' ? `${snap.playerPoints}-${snap.robotPoints}` : undefined,
     });
 
     if (!res.ok) {
@@ -535,4 +535,4 @@ class SentinelPongApp {
   }
 }
 
-new SentinelPongApp();
+new RobotPongApp();

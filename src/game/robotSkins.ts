@@ -1,6 +1,6 @@
 /**
  * Development Robot Skin Registry (purely aesthetic — identical AI, hitboxes, and physics).
- * Add new experimental Sentinel .glb models here to preview and compare them live in-game.
+ * Add new experimental robot .glb models here to preview and compare them live in-game.
  */
 export interface RobotSkinDefinition {
   id: string;
@@ -19,7 +19,7 @@ export const ROBOT_SKINS: readonly RobotSkinDefinition[] = [
     name: 'MK-I CLASSIC',
     badge: 'DEFAULT',
     description: 'Original sleek armored carapace with glowing crimson ring segments.',
-    modelUrl: '/models/sentinel.glb',
+    modelUrl: '/models/robot.glb',
     armArcStyle: 'classic',
   },
   {
@@ -27,7 +27,7 @@ export const ROBOT_SKINS: readonly RobotSkinDefinition[] = [
     name: 'CONCEPT 1:1',
     badge: 'ARTWORK',
     description: 'Taller charred patchwork dome, dense wire beard, clustered Matrix optics, and interlocking centipede tentacles.',
-    modelUrl: '/models/sentinel_reference.glb',
+    modelUrl: '/models/robot_reference.glb',
     armArcStyle: 'high_coil',
   },
 ] as const;

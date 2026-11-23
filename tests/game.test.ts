@@ -17,8 +17,8 @@ import { computeGhostPaddleOpacity, projectNdcToZPlane } from '../src/game/scene
 import { computeFloatingPopupOrigin } from '../src/game/matrixEffects';
 import { evaluateStoryMatchOutcome } from '../src/game/gameEngine';
 import { DEFAULT_ROBOT_SKIN_ID, getRobotSkin, ROBOT_SKINS } from '../src/game/robotSkins';
-import { DUEL_DIFFICULTIES, PLAYER_PADDLE, SENTINEL, STORY_STAGE2_CONFIGS, TABLE } from '../src/game/constants';
-import { SentinelController } from '../src/game/sentinelRig';
+import { DUEL_DIFFICULTIES, PLAYER_PADDLE, ROBOT, STORY_STAGE2_CONFIGS, TABLE } from '../src/game/constants';
+import { RobotController } from '../src/game/robotRig';
 import {
   LeaderboardStore,
   sanitizeCallsign,
@@ -44,15 +44,15 @@ describe('Constructed 3D GLB Model Integrity', () => {
       expect(model.nodes).toBeGreaterThan(1);
       expect(model.materials).toBeGreaterThan(0);
     }
-    const sentinel = results.find((r) => r.file === 'sentinel.glb');
-    expect(sentinel).toBeDefined();
-    expect(sentinel!.triangles).toBeGreaterThan(4000);
-    expect(sentinel!.textures).toBeGreaterThanOrEqual(2);
+    const robot = results.find((r) => r.file === 'robot.glb');
+    expect(robot).toBeDefined();
+    expect(robot!.triangles).toBeGreaterThan(4000);
+    expect(robot!.textures).toBeGreaterThanOrEqual(2);
 
-    const sentinelRef = results.find((r) => r.file === 'sentinel_reference.glb');
-    expect(sentinelRef).toBeDefined();
-    expect(sentinelRef!.triangles).toBeGreaterThan(8000);
-    expect(sentinelRef!.textures).toBeGreaterThanOrEqual(2);
+    const robotRef = results.find((r) => r.file === 'robot_reference.glb');
+    expect(robotRef).toBeDefined();
+    expect(robotRef!.triangles).toBeGreaterThan(8000);
+    expect(robotRef!.textures).toBeGreaterThanOrEqual(2);
 
     const cityscape = results.find((r) => r.file === 'cityscape_expansion.glb');
     expect(cityscape).toBeDefined();
@@ -65,7 +65,7 @@ describe('Constructed 3D GLB Model Integrity', () => {
     expect(ROBOT_SKINS.length).toBeGreaterThanOrEqual(2);
     expect(getRobotSkin(null).id).toBe('classic');
     expect(getRobotSkin('does-not-exist').id).toBe('classic');
-    expect(getRobotSkin('reference').modelUrl).toBe('/models/sentinel_reference.glb');
+    expect(getRobotSkin('reference').modelUrl).toBe('/models/robot_reference.glb');
   });
 
   it('evaluates Story Mode Stage 1 -> Stage 2 surprise cutscene & deuce rules accurately', () => {
@@ -84,7 +84,7 @@ describe('Constructed 3D GLB Model Integrity', () => {
     // Losing Stage 1 ends game cleanly without spoiling Stage 2
     expect(evaluateStoryMatchOutcome(1, 2, 5)).toEqual({
       action: 'game_over',
-      winner: 'sentinel',
+      winner: 'robot',
     });
     // Winning or losing Stage 2 ends the full Story Mode match
     expect(evaluateStoryMatchOutcome(2, 5, 2)).toEqual({
@@ -93,7 +93,7 @@ describe('Constructed 3D GLB Model Integrity', () => {
     });
     expect(evaluateStoryMatchOutcome(2, 3, 5)).toEqual({
       action: 'game_over',
-      winner: 'sentinel',
+      winner: 'robot',
     });
   });
 });
@@ -120,36 +120,36 @@ describe('3D Table Tennis Physics Engine', () => {
     ball.lastHitBy = 'player';
 
     const playerPaddle = makePaddle(0.8, 1.0, PLAYER_PADDLE.BASE_Z);
-    const sentinelPaddle = makePaddle(0.95, 1.2, SENTINEL.PADDLE_BASE_Z); // out of the way
+    const robotPaddle = makePaddle(0.95, 1.2, ROBOT.PADDLE_BASE_Z); // out of the way
 
-    let bouncedSentinel = false;
+    let bouncedRobot = false;
     let hitNetStop = false;
     for (let i = 0; i < 90; i++) {
-      const evs = stepPhysics(ball, 1 / 60, { playerPaddle, sentinelPaddle });
+      const evs = stepPhysics(ball, 1 / 60, { playerPaddle, robotPaddle });
       for (const e of evs) {
-        if (e.type === 'table_bounce' && e.side === 'sentinel') bouncedSentinel = true;
+        if (e.type === 'table_bounce' && e.side === 'robot') bouncedRobot = true;
         if (e.type === 'net_hit' && !e.cleared) hitNetStop = true;
       }
-      if (bouncedSentinel) break;
+      if (bouncedRobot) break;
     }
 
     expect(hitNetStop).toBe(false);
-    expect(bouncedSentinel).toBe(true);
+    expect(bouncedRobot).toBe(true);
   });
 
-  it('detects double bounce on player side and awards point to Sentinel', () => {
+  it('detects double bounce on player side and awards point to Robot', () => {
     const ball = createBallState();
     ball.pos = { x: 0, y: TABLE.SURFACE_Y + 0.22, z: 0.7 };
     ball.vel = { x: 0, y: -1.8, z: 0.2 };
     ball.active = true;
-    ball.lastHitBy = 'sentinel';
+    ball.lastHitBy = 'robot';
 
     const playerPaddle = makePaddle(0.95, 1.0, PLAYER_PADDLE.BASE_Z);
-    const sentinelPaddle = makePaddle(0, 1.0, SENTINEL.PADDLE_BASE_Z);
+    const robotPaddle = makePaddle(0, 1.0, ROBOT.PADDLE_BASE_Z);
 
     let endEvent: { winner: string; reason: string } | null = null;
     for (let i = 0; i < 180 && !endEvent; i++) {
-      const evs = stepPhysics(ball, 1 / 60, { playerPaddle, sentinelPaddle });
+      const evs = stepPhysics(ball, 1 / 60, { playerPaddle, robotPaddle });
       for (const e of evs) {
         if (e.type === 'point_end') {
           endEvent = { winner: e.winner, reason: e.reason };
@@ -158,7 +158,7 @@ describe('3D Table Tennis Physics Engine', () => {
     }
 
     expect(endEvent).not.toBeNull();
-    expect(endEvent!.winner).toBe('sentinel');
+    expect(endEvent!.winner).toBe('robot');
     expect(endEvent!.reason).toBe('double_bounce');
   });
 
@@ -171,7 +171,7 @@ describe('3D Table Tennis Physics Engine', () => {
 
     stepPhysics(ball, 12.5, {
       playerPaddle: makePaddle(0, 1, PLAYER_PADDLE.BASE_Z),
-      sentinelPaddle: makePaddle(0, 1, SENTINEL.PADDLE_BASE_Z),
+      robotPaddle: makePaddle(0, 1, ROBOT.PADDLE_BASE_Z),
     });
 
     expect(Number.isFinite(ball.pos.x)).toBe(true);
@@ -180,13 +180,13 @@ describe('3D Table Tennis Physics Engine', () => {
     expect(Math.abs(ball.pos.z)).toBeLessThan(1.5);
   });
 
-  it('predicts incoming ball trajectory across Sentinel strike plane accurately', () => {
+  it('predicts incoming ball trajectory across Robot strike plane accurately', () => {
     const ball = createBallState();
     ball.pos = { x: 0.1, y: 1.05, z: 0.9 };
     ball.vel = solveBallisticShot(ball.pos, -0.25, -0.85, 0.56, { x: 10, y: 0, z: 0 });
     ball.spin = { x: 10, y: 0, z: 0 };
     ball.active = true;
-    const pred = predictBallAtZ(ball, SENTINEL.PADDLE_BASE_Z);
+    const pred = predictBallAtZ(ball, ROBOT.PADDLE_BASE_Z);
     expect(pred.willReach).toBe(true);
     expect(pred.time).toBeGreaterThan(0.2);
     expect(Math.abs(pred.x)).toBeLessThan(1.2);
@@ -220,7 +220,7 @@ describe('3D Table Tennis Physics Engine', () => {
     ball.pos = { x: 0.45, y: 1.05, z: PLAYER_PADDLE.BASE_Z - 0.8 };
     ball.vel = { x: 0, y: 0.6, z: 4.5 };
     ball.active = true;
-    ball.lastHitBy = 'sentinel';
+    ball.lastHitBy = 'robot';
 
     // 0.30m off-center -> missRatio ~ 1.40 (inside near-miss forgiveness ring 0.96..2.35)
     const nearMissPaddle = makePaddle(0.15, 1.05, PLAYER_PADDLE.BASE_Z);
@@ -310,16 +310,16 @@ describe('3D Table Tennis Physics Engine', () => {
   it('keeps MK-I EASY & Stage 2 APEX genuinely beatable via cross-court smashes while still returning straight shots', () => {
     const simulateShot = (
       phaseCfg: typeof DUEL_DIFFICULTIES.easy,
-      sentinelStartX: number,
+      robotStartX: number,
       targetX: number,
       flightTime: number,
       isSmash: boolean
     ): 'returned' | 'player_winner' | 'other' => {
       const dummyRoot = new THREE.Group();
       const dummyPaddle = new THREE.Group();
-      const ctrl = new SentinelController(dummyRoot, dummyPaddle);
-      ctrl.paddleState.pos.x = sentinelStartX;
-      ctrl.paddleState.prevPos.x = sentinelStartX;
+      const ctrl = new RobotController(dummyRoot, dummyPaddle);
+      ctrl.paddleState.pos.x = robotStartX;
+      ctrl.paddleState.prevPos.x = robotStartX;
 
       const ball = createBallState();
       const origin = { x: 0.1, y: TABLE.SURFACE_Y + 0.3, z: 1.32 };
@@ -336,10 +336,10 @@ describe('3D Table Tennis Physics Engine', () => {
         ctrl.update(1 / 60, ball, phaseCfg, true);
         const evs = stepPhysics(ball, 1 / 60, {
           playerPaddle: outOfWayPlayer,
-          sentinelPaddle: ctrl.paddleState,
+          robotPaddle: ctrl.paddleState,
         });
         for (const ev of evs) {
-          if (ev.type === 'paddle_hit' && ev.by === 'sentinel') return 'returned';
+          if (ev.type === 'paddle_hit' && ev.by === 'robot') return 'returned';
           if (ev.type === 'point_end' && ev.winner === 'player') return 'player_winner';
         }
       }
@@ -352,7 +352,7 @@ describe('3D Table Tennis Physics Engine', () => {
     // 2) Cross-court Power Smash away from MK-I EASY's corner cleanly scores a winner!
     expect(simulateShot(DUEL_DIFFICULTIES.easy, -0.58, 0.62, 0.42, true)).toBe('player_winner');
 
-    // 3) Cross-court Power Smash also beats Stage 2 APEX SENTINEL (easy tier)!
+    // 3) Cross-court Power Smash also beats Stage 2 APEX ROBOT (easy tier)!
     expect(simulateShot(STORY_STAGE2_CONFIGS.easy, -0.58, 0.64, 0.38, true)).toBe('player_winner');
   });
 
@@ -362,7 +362,7 @@ describe('3D Table Tennis Physics Engine', () => {
     ball.pos = { x: 1.05, y: 1.08, z: PLAYER_PADDLE.BASE_Z - 0.8 };
     ball.vel = { x: 2.5, y: 0.4, z: 4.0 };
     ball.active = true;
-    ball.lastHitBy = 'sentinel';
+    ball.lastHitBy = 'robot';
     ball.bouncesOnPlayer = 1;
 
     // 1) Cursor near right edge + vertically aligned -> jumps horizontally straight onto predicted X (~1.53m)!
@@ -407,7 +407,7 @@ describe('3D Table Tennis Physics Engine', () => {
     });
     expect(wrongEdge.active).toBe(false);
 
-    // 5) Unbounced Sentinel out-of-bounds fault flying wide (bouncesOnPlayer = 0) -> does NOT jump!
+    // 5) Unbounced Robot out-of-bounds fault flying wide (bouncesOnPlayer = 0) -> does NOT jump!
     ball.bouncesOnPlayer = 0;
     const outFault = computeEdgeJumpTargetX({
       ball,
@@ -418,26 +418,26 @@ describe('3D Table Tennis Physics Engine', () => {
     });
     expect(outFault.active).toBe(false);
 
-    // 6) Striking a wide off-screen bounced ball at x = +1.55m returns cleanly onto Sentinel's table half!
+    // 6) Striking a wide off-screen bounced ball at x = +1.55m returns cleanly onto Robot's table half!
     ball.bouncesOnPlayer = 1;
     const edgePaddle = makePaddle(jump.targetX, 1.05, PLAYER_PADDLE.BASE_Z);
     edgePaddle.vel.x = 2.0; // clamped during auto-jump
-    const farSentinel = makePaddle(-0.95, 1.0, SENTINEL.PADDLE_BASE_Z);
+    const farRobot = makePaddle(-0.95, 1.0, ROBOT.PADDLE_BASE_Z);
     let hitByPlayer = false;
-    let landedOnSentinel = false;
+    let landedOnRobot = false;
     for (let i = 0; i < 120; i++) {
       const evs = stepPhysics(ball, 1 / 60, {
         playerPaddle: edgePaddle,
-        sentinelPaddle: farSentinel,
+        robotPaddle: farRobot,
       });
       for (const ev of evs) {
         if (ev.type === 'paddle_hit' && ev.by === 'player') hitByPlayer = true;
-        if (ev.type === 'table_bounce' && ev.side === 'sentinel') landedOnSentinel = true;
+        if (ev.type === 'table_bounce' && ev.side === 'robot') landedOnRobot = true;
       }
-      if (landedOnSentinel) break;
+      if (landedOnRobot) break;
     }
     expect(hitByPlayer).toBe(true);
-    expect(landedOnSentinel).toBe(true);
+    expect(landedOnRobot).toBe(true);
   });
 
   it('hides the ghost visual on brief non-edge desyncs, shows clearly without glow when flicked to edge or sustained, and lets the invisible ghost hitbox catch balls', () => {
@@ -464,20 +464,20 @@ describe('3D Table Tennis Physics Engine', () => {
     ball.pos = { x: 0.42, y: 1.05, z: PLAYER_PADDLE.BASE_Z - 0.08 };
     ball.vel = { x: 0, y: 0.2, z: 6.5 };
     ball.active = true;
-    ball.lastHitBy = 'sentinel';
+    ball.lastHitBy = 'robot';
 
     const laggingPrimaryPaddle = makePaddle(-0.3, 1.05, PLAYER_PADDLE.BASE_Z); // still catching up!
     const invisibleGhostCursor = makePaddle(0.42, 1.05, PLAYER_PADDLE.BASE_Z); // right on cursor!
-    const farSentinel = makePaddle(-0.9, 1.0, SENTINEL.PADDLE_BASE_Z);
+    const farRobot = makePaddle(-0.9, 1.0, ROBOT.PADDLE_BASE_Z);
 
     const evs = stepPhysics(ball, 1 / 60, {
       playerPaddle: laggingPrimaryPaddle,
       ghostPlayerPaddle: invisibleGhostCursor,
-      sentinelPaddle: farSentinel,
+      robotPaddle: farRobot,
     });
     const playerHit = evs.find((e) => e.type === 'paddle_hit' && e.by === 'player');
     expect(playerHit).toBeDefined();
-    expect(ball.vel.z).toBeLessThan(0); // returned cleanly back toward Sentinel!
+    expect(ball.vel.z).toBeLessThan(0); // returned cleanly back toward Robot!
   });
 });
 
@@ -497,7 +497,7 @@ describe('Leaderboard Persistence & Validation', () => {
   });
 
   it('starts empty of generated scores, persists & ranks personal scores, strips legacy seeds, and recovers from corrupt JSON', async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sentinel-lb-'));
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'robot-lb-'));
     const dataFile = path.join(tmpDir, 'leaderboard.json');
 
     try {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  SENTINEL,
+  ROBOT,
   TABLE,
   type ThreatPhaseConfig,
 } from './constants';
@@ -21,7 +21,7 @@ interface BgTentacleTrack {
   ampScale: number;
 }
 
-export interface SentinelRigSnapshot {
+export interface RobotRigSnapshot {
   paddleState: PaddleState;
   targetPaddlePos: THREE.Vector3;
   swingImpulse: number;
@@ -34,7 +34,7 @@ export interface SentinelRigSnapshot {
   clock: number;
 }
 
-export class SentinelController {
+export class RobotController {
   public readonly root: THREE.Object3D;
   public readonly paddleObject: THREE.Object3D;
   private readonly armArcStyle: 'classic' | 'high_coil';
@@ -50,13 +50,13 @@ export class SentinelController {
 
   // Dynamic AI & animation state
   public paddleState: PaddleState = {
-    pos: { x: -0.22, y: TABLE.SURFACE_Y + 0.32, z: SENTINEL.PADDLE_BASE_Z },
-    prevPos: { x: -0.22, y: TABLE.SURFACE_Y + 0.32, z: SENTINEL.PADDLE_BASE_Z },
+    pos: { x: -0.22, y: TABLE.SURFACE_Y + 0.32, z: ROBOT.PADDLE_BASE_Z },
+    prevPos: { x: -0.22, y: TABLE.SURFACE_Y + 0.32, z: ROBOT.PADDLE_BASE_Z },
     vel: { x: 0, y: 0, z: 0 },
     smashCharge: 0,
   };
 
-  private targetPaddlePos = new THREE.Vector3(-0.22, TABLE.SURFACE_Y + 0.32, SENTINEL.PADDLE_BASE_Z);
+  private targetPaddlePos = new THREE.Vector3(-0.22, TABLE.SURFACE_Y + 0.32, ROBOT.PADDLE_BASE_Z);
   private swingImpulse = 0; // +1 forward strike punch
   private recoilImpulse = 0; // when player scores a kill shot
   private smashTelegraph = 0; // 0..1 charging crimson smash
@@ -81,24 +81,24 @@ export class SentinelController {
   private readonly _invRootMat = new THREE.Matrix4();
 
   constructor(
-    sentinelModel: THREE.Object3D,
+    robotModel: THREE.Object3D,
     paddleModel: THREE.Object3D,
     eyeLight?: THREE.PointLight,
     armArcStyle: 'classic' | 'high_coil' = 'classic'
   ) {
-    this.root = sentinelModel;
+    this.root = robotModel;
     this.paddleObject = paddleModel;
     this.eyeLight = eyeLight ?? null;
     this.armArcStyle = armArcStyle;
 
     this.root.position.set(
-      SENTINEL.HOME_POS.x,
-      SENTINEL.HOME_POS.y,
-      SENTINEL.HOME_POS.z
+      ROBOT.HOME_POS.x,
+      ROBOT.HOME_POS.y,
+      ROBOT.HOME_POS.z
     );
 
-    // Mount the Sentinel's iconic red table tennis paddle at boss scale
-    this.paddleObject.scale.setScalar(SENTINEL.PADDLE_SCALE);
+    // Mount the Robot's iconic red table tennis paddle at boss scale
+    this.paddleObject.scale.setScalar(ROBOT.PADDLE_SCALE);
     this.paddleObject.position.set(
       this.paddleState.pos.x,
       this.paddleState.pos.y,
@@ -108,7 +108,7 @@ export class SentinelController {
     this.discoverRigNodes();
   }
 
-  public exportState(): SentinelRigSnapshot {
+  public exportState(): RobotRigSnapshot {
     return {
       paddleState: {
         pos: { ...this.paddleState.pos },
@@ -128,7 +128,7 @@ export class SentinelController {
     };
   }
 
-  public importState(snap: SentinelRigSnapshot): void {
+  public importState(snap: RobotRigSnapshot): void {
     this.paddleState = {
       pos: { ...snap.paddleState.pos },
       prevPos: { ...snap.paddleState.prevPos },
@@ -235,7 +235,7 @@ export class SentinelController {
   }
 
   /**
-   * Called by physics when the Sentinel's paddle strikes the ball.
+   * Called by physics when the Robot's paddle strikes the ball.
    */
   public planReturnShot(
     _ball: BallState,
@@ -291,7 +291,7 @@ export class SentinelController {
   }
 
   /**
-   * Updates AI paddle tracking, Sentinel hover/eye tracking, and real-time 3D tentacle spline IK.
+   * Updates AI paddle tracking, Robot hover/eye tracking, and real-time 3D tentacle spline IK.
    */
   public update(
     dt: number,
@@ -314,7 +314,7 @@ export class SentinelController {
     if (incoming) {
       if (this.trackedShotId !== this.shotCounter) {
         this.trackedShotId = this.shotCounter;
-        // Realistic reaction delay before the Sentinel starts sprinting toward a new shot
+        // Realistic reaction delay before the Robot starts sprinting toward a new shot
         this.reactionTimer = phase.reactionDelay;
 
         // Lateral imperfection scales up on fast Power Smashes & heavy Magnus curve shots
@@ -337,7 +337,7 @@ export class SentinelController {
       if (this.reactionTimer > 0) {
         this.reactionTimer = Math.max(0, this.reactionTimer - dt);
       } else {
-        const pred = predictBallAtZ(ball, SENTINEL.PADDLE_BASE_Z);
+        const pred = predictBallAtZ(ball, ROBOT.PADDLE_BASE_Z);
         if (pred.willReach) {
           const aimX = clamp(
             pred.x + this.plannedErrorX,
@@ -348,7 +348,7 @@ export class SentinelController {
 
           // Wind up slightly back before punching forward right at contact
           const windUpZ = pred.time < 0.22 ? 0.12 * (1 - pred.time / 0.22) : -0.14;
-          this.targetPaddlePos.set(aimX, aimY, SENTINEL.PADDLE_BASE_Z + windUpZ);
+          this.targetPaddlePos.set(aimX, aimY, ROBOT.PADDLE_BASE_Z + windUpZ);
 
           if (this.plannedSmash && pred.time < 0.65) {
             this.smashTelegraph = clamp(1 - pred.time / 0.65, 0.15, 1);
@@ -363,12 +363,12 @@ export class SentinelController {
       this.smashTelegraph = Math.max(0, this.smashTelegraph - dt * 3.5);
       const idleX = isPlaying ? Math.sin(this.clock * 1.15) * 0.18 - 0.12 : -0.26 + Math.sin(this.clock * 0.9) * 0.08;
       const idleY = TABLE.SURFACE_Y + 0.34 + Math.sin(this.clock * 1.7) * 0.05;
-      const idleZ = SENTINEL.PADDLE_BASE_Z + Math.cos(this.clock * 1.1) * 0.04;
+      const idleZ = ROBOT.PADDLE_BASE_Z + Math.cos(this.clock * 1.1) * 0.04;
       this.targetPaddlePos.set(idleX, idleY, idleZ);
     }
 
     // Smooth velocity-limited lateral movement (slower when passively recovering between shots)
-    const speedLimit = incoming ? phase.sentinelSpeed : phase.sentinelSpeed * 0.38;
+    const speedLimit = incoming ? phase.robotSpeed : phase.robotSpeed * 0.38;
     const maxMove = speedLimit * dt;
     const dx = this.targetPaddlePos.x - this.paddleState.pos.x;
     const dy = this.targetPaddlePos.y - this.paddleState.pos.y;
@@ -401,7 +401,7 @@ export class SentinelController {
     const paddleYaw = clamp(-this.paddleState.pos.x * 0.22, -0.35, 0.35);
     this.paddleObject.rotation.set(paddlePitch, paddleYaw, paddleRoll);
 
-    // Animate Sentinel body hover, menace lean, and ball eye-tracking
+    // Animate Robot body hover, menace lean, and ball eye-tracking
     const hoverY = Math.sin(this.clock * 1.45) * 0.085;
     const hoverX =
       Math.sin(this.clock * 0.72) * 0.09 +
@@ -410,9 +410,9 @@ export class SentinelController {
     const leanZ = this.smashTelegraph * 0.24 + this.swingImpulse * 0.18 + recoilZ;
 
     this.root.position.set(
-      SENTINEL.HOME_POS.x + hoverX,
-      SENTINEL.HOME_POS.y + hoverY + this.recoilImpulse * 0.14,
-      SENTINEL.HOME_POS.z + leanZ
+      ROBOT.HOME_POS.x + hoverX,
+      ROBOT.HOME_POS.y + hoverY + this.recoilImpulse * 0.14,
+      ROBOT.HOME_POS.z + leanZ
     );
 
     // Carapace subtly tracks ball position so the red optical array locks onto the player/ball
@@ -463,7 +463,7 @@ export class SentinelController {
     const count = this.paddleArmSegments.length;
     if (count < 2) return;
 
-    // Convert paddle handle grip world point into SentinelRoot local space
+    // Convert paddle handle grip world point into RobotRoot local space
     // Paddle handle center is at (0, -0.125 * scale, 0) in paddleObject local space
     this.paddleObject.updateMatrixWorld(true);
     this._vA.set(0, -0.13, -0.015).applyMatrix4(this.paddleObject.matrixWorld);

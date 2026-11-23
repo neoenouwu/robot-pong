@@ -211,7 +211,7 @@ export class SteamMistSystem {
       { x: 2.8, y: 1.4, z: -2.6, tint: 0xc2ead5, scale: 3.7, op: 0.19 },
       { x: 2.3, y: 0.85, z: -4.5, tint: 0x9ef0c5, scale: 4.1, op: 0.18 },
       { x: 3.9, y: 1.8, z: 0.5, tint: 0xffbd80, scale: 3.2, op: 0.18 },
-      // Low mist beneath the Sentinel behind the far end of the table
+      // Low mist beneath the Robot behind the far end of the table
       { x: -0.9, y: 0.72, z: -2.2, tint: 0xb7dfd0, scale: 2.8, op: 0.21 },
       { x: 0.9, y: 0.78, z: -2.4, tint: 0xb7dfd0, scale: 2.9, op: 0.2 },
       { x: 0.0, y: 0.65, z: -3.4, tint: 0x89dfb6, scale: 3.8, op: 0.2 },
@@ -271,7 +271,7 @@ const FLOATING_TONE_STYLES: Record<FloatingTextTone, { fill: string; glow: strin
  */
 export function computeFloatingPopupOrigin(
   anchor: Vec3,
-  options: { side: 'player' | 'sentinel' | 'world'; stackIndex?: number }
+  options: { side: 'player' | 'robot' | 'world'; stackIndex?: number }
 ): Vec3 {
   const stack = options.stackIndex ?? 0;
   if (options.side === 'world') {
@@ -367,7 +367,7 @@ export class FloatingTextSystem {
     opts: {
       subText?: string;
       tone?: FloatingTextTone;
-      side?: 'player' | 'sentinel' | 'world';
+      side?: 'player' | 'robot' | 'world';
       scale?: number;
       duration?: number;
     } = {}
@@ -427,7 +427,7 @@ export class FloatingTextSystem {
     const origin = computeFloatingPopupOrigin(anchor, { side, stackIndex: nearbyCount });
     slot.sprite.position.set(origin.x, origin.y, origin.z);
 
-    // Distance-balanced world scale: subtle near player paddle, legible near Sentinel far court
+    // Distance-balanced world scale: subtle near player paddle, legible near Robot far court
     const defaultScale = side === 'player' ? 0.36 : side === 'world' ? 0.56 : 0.68;
     const sc = opts.scale ?? defaultScale;
     slot.baseScaleX = sc;
@@ -491,7 +491,7 @@ export class FloatingTextSystem {
  * - Ball energy ribbon trail
  * - Contact shadow & depth targeting reticle on the tabletop
  * - Spark particle burst pool
- * - Sentinel crimson smash lock-on laser beam
+ * - Robot crimson smash lock-on laser beam
  * - Floating Matrix bonus ring target
  * - Subtle 3D floating point popups
  */
@@ -690,7 +690,7 @@ export class GameplayVFX {
     opts?: {
       subText?: string;
       tone?: FloatingTextTone;
-      side?: 'player' | 'sentinel' | 'world';
+      side?: 'player' | 'robot' | 'world';
       scale?: number;
       duration?: number;
     }

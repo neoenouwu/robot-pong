@@ -219,7 +219,7 @@ body,
   font-size: 12px;
 }
 
-/* Main Menu Layout: Anchored bottom/sides so the 3D Sentinel boss shines in center! */
+/* Main Menu Layout: Anchored bottom/sides so the 3D robot boss shines in center! */
 .menu-overlay {
   position: fixed;
   inset: 0;

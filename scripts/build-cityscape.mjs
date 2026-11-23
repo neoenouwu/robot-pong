@@ -2161,7 +2161,7 @@ const fmtBox = (b) => ({
   max: b.max.toArray().map((n) => +n.toFixed(2)),
 });
 
-console.log('=== Sentinel Pong: Stage 2 Matrix Cityscape Expansion GLB Built & Verified ===');
+console.log('=== Robot Pong: Stage 2 Matrix Cityscape Expansion GLB Built & Verified ===');
 console.log(`Output:               ${exportStats.outputPath}`);
 console.log(`Build time:           ${elapsedMs} ms`);
 console.log(`File size:            ${inspectReport.sizeKB} KB (${exportStats.byteLength} bytes)`);

@@ -2,7 +2,7 @@ import {
   getStoryPhaseConfig,
   getThreatPhaseForScore,
   PLAYER_PADDLE,
-  SENTINEL,
+  ROBOT,
   STORY_POINTS_TO_WIN,
   TABLE,
   type Difficulty,
@@ -46,15 +46,15 @@ export interface StoryOutcome {
 export function evaluateStoryMatchOutcome(
   stage: StoryStage,
   playerPoints: number,
-  sentinelPoints: number
+  robotPoints: number
 ): StoryOutcome {
   const reachedTarget =
-    playerPoints >= STORY_POINTS_TO_WIN || sentinelPoints >= STORY_POINTS_TO_WIN;
-  const lead = Math.abs(playerPoints - sentinelPoints);
+    playerPoints >= STORY_POINTS_TO_WIN || robotPoints >= STORY_POINTS_TO_WIN;
+  const lead = Math.abs(playerPoints - robotPoints);
   if (!reachedTarget || lead < 2) {
     return { action: 'continue', winner: null };
   }
-  const winner: Side = playerPoints > sentinelPoints ? 'player' : 'sentinel';
+  const winner: Side = playerPoints > robotPoints ? 'player' : 'robot';
   if (stage === 1 && winner === 'player') {
     return { action: 'trigger_stage2_cutscene', winner: 'player' };
   }
@@ -76,7 +76,7 @@ export interface HudSnapshot {
   shields: number;
   maxShields: number;
   playerPoints: number;
-  sentinelPoints: number;
+  robotPoints: number;
   server: Side;
   focus: number; // 0..100
   bulletTimeActive: boolean;
@@ -148,7 +148,7 @@ export class GameEngine {
   private shields = 3;
   private readonly maxShields = 3;
   private playerPoints = 0;
-  private sentinelPoints = 0;
+  private robotPoints = 0;
   private totalDuelPoints = 0;
   private server: Side = 'player';
   private focus = 100; // Unlimited Bullet Time Focus
@@ -262,7 +262,7 @@ export class GameEngine {
     this.perfectHits = 0;
     this.shields = this.maxShields;
     this.playerPoints = 0;
-    this.sentinelPoints = 0;
+    this.robotPoints = 0;
     this.totalDuelPoints = 0;
     this.server = 'player';
     this.focus = 100;
@@ -412,7 +412,7 @@ export class GameEngine {
     this.storyStage = 2;
     this.maxPhaseReached = Math.max(this.maxPhaseReached, 2);
     this.playerPoints = 0;
-    this.sentinelPoints = 0;
+    this.robotPoints = 0;
     this.totalDuelPoints = 0;
     this.server = 'player';
     void this.sceneManager.finishStage2Cutscene().then(() => {
@@ -468,7 +468,7 @@ export class GameEngine {
     this.ball.lastHitBy = 'player';
     this.ball.hitCooldown = 0.14;
     this.state = 'RALLY';
-    this.sceneManager.sentinelController?.notifyPlayerHit();
+    this.sceneManager.robotController?.notifyPlayerHit();
     this.audio.playPaddleHit({
       by: 'player',
       perfect: false,
@@ -480,12 +480,12 @@ export class GameEngine {
     this.pushHud(true);
   }
 
-  private launchSentinelServe(): void {
+  private launchRobotServe(): void {
     const phase = this.getCurrentThreatPhase();
     const origin = {
-      x: this.sceneManager.sentinelController?.paddleState.pos.x ?? -0.2,
+      x: this.sceneManager.robotController?.paddleState.pos.x ?? -0.2,
       y: TABLE.SURFACE_Y + 0.36,
-      z: SENTINEL.PADDLE_BASE_Z + 0.1,
+      z: ROBOT.PADDLE_BASE_Z + 0.1,
     };
     const targetX = (Math.random() - 0.5) * 0.92;
     const targetZ = 0.82 + Math.random() * 0.25;
@@ -500,12 +500,12 @@ export class GameEngine {
     this.ball.vel = solveBallisticShot(origin, targetX, targetZ, 0.68, spin, 0.085);
     this.ball.spin = spin;
     this.ball.active = true;
-    this.ball.lastHitBy = 'sentinel';
+    this.ball.lastHitBy = 'robot';
     this.ball.hitCooldown = 0.16;
     this.state = 'RALLY';
-    this.sceneManager.sentinelController?.triggerSwing(false);
+    this.sceneManager.robotController?.triggerSwing(false);
     this.audio.playPaddleHit({
-      by: 'sentinel',
+      by: 'robot',
       perfect: false,
       smash: false,
       curve: false,
@@ -579,7 +579,7 @@ export class GameEngine {
 
     // State-specific simulation
     if (this.state === 'MENU') {
-      // Gentle hovering ball showcase over the wet table between player and Sentinel
+      // Gentle hovering ball showcase over the wet table between player and Robot
       const t = nowMs * 0.001;
       this.ball.pos.x = Math.sin(t * 1.1) * 0.16;
       this.ball.pos.y = TABLE.SURFACE_Y + 0.36 + Math.sin(t * 2.2) * 0.07;
@@ -593,7 +593,7 @@ export class GameEngine {
       } else {
         this.serveAutoTimer -= realDt;
         if (this.serveAutoTimer <= 0) {
-          this.launchSentinelServe();
+          this.launchRobotServe();
         }
       }
     } else if (this.state === 'RALLY') {
@@ -616,14 +616,14 @@ export class GameEngine {
         }
       }
 
-      const sentinelCtrl = this.sceneManager.sentinelController;
-      if (sentinelCtrl) {
+      const robotCtrl = this.sceneManager.robotController;
+      if (robotCtrl) {
         const events = stepPhysics(this.ball, simDt, {
           playerPaddle: this.playerPaddle,
           ghostPlayerPaddle: this.ghostCursorPaddle,
-          sentinelPaddle: sentinelCtrl.paddleState,
-          sentinelReturnFn: (b, hitPos) =>
-            sentinelCtrl.planReturnShot(b, hitPos, phase, this.rally),
+          robotPaddle: robotCtrl.paddleState,
+          robotReturnFn: (b, hitPos) =>
+            robotCtrl.planReturnShot(b, hitPos, phase, this.rally),
         });
 
         for (const ev of events) {
@@ -638,7 +638,7 @@ export class GameEngine {
             if (ev.by === 'player') {
               this.rally += 1;
               if (this.rally > this.bestRally) this.bestRally = this.rally;
-              sentinelCtrl.notifyPlayerHit();
+              robotCtrl.notifyPlayerHit();
 
               const mult = this.getComboMultiplier();
               let gained = 100 * mult;
@@ -685,7 +685,7 @@ export class GameEngine {
                 side: 'player',
               });
             } else {
-              // Sentinel returned the ball
+              // Robot returned the ball
               this.sceneManager.vfx.emitSparks(
                 ev.pos,
                 ev.smash ? 0xff1c3a : 0xff7730,
@@ -708,9 +708,9 @@ export class GameEngine {
       }
     }
 
-    // Update Sentinel 3D rig & AI
-    if (this.sceneManager.sentinelController) {
-      this.sceneManager.sentinelController.update(
+    // Update Robot 3D rig & AI
+    if (this.sceneManager.robotController) {
+      this.sceneManager.robotController.update(
         simDt > 0 ? simDt : realDt * (this.state === 'PAUSED' ? 0 : 1),
         this.ball,
         phase,
@@ -758,30 +758,30 @@ export class GameEngine {
 
     if (winner === 'player') {
       this.playerPoints += 1;
-      this.sceneManager.sentinelController?.triggerRecoil();
+      this.sceneManager.robotController?.triggerRecoil();
       this.sceneManager.addCameraShake(0.07);
       const killBonus = 750 * this.getComboMultiplier();
       this.score += killBonus;
-      const sentinelPos = this.sceneManager.sentinelController?.paddleState.pos ?? {
+      const robotPos = this.sceneManager.robotController?.paddleState.pos ?? {
         x: 0,
         y: TABLE.SURFACE_Y + 0.35,
-        z: SENTINEL.PADDLE_BASE_Z,
+        z: ROBOT.PADDLE_BASE_Z,
       };
-      this.sceneManager.vfx.spawnFloatingPoints(sentinelPos, `+${killBonus}`, {
+      this.sceneManager.vfx.spawnFloatingPoints(robotPos, `+${killBonus}`, {
         subText: 'WINNER',
         tone: 'emerald',
-        side: 'sentinel',
+        side: 'robot',
         duration: 1.05,
       });
     } else {
-      this.sentinelPoints += 1;
+      this.robotPoints += 1;
       this.sceneManager.addCameraShake(0.055);
       if (this.mode === 'arcade') {
         this.shields = Math.max(0, this.shields - 1);
       }
       this.sceneManager.vfx.spawnFloatingPoints(
         this.playerPaddle.pos,
-        this.mode === 'arcade' ? '-1 SHIELD' : 'SENTINEL PT',
+        this.mode === 'arcade' ? '-1 SHIELD' : 'ROBOT PT',
         { tone: 'crimson', side: 'player', duration: 0.9 }
       );
     }
@@ -790,19 +790,19 @@ export class GameEngine {
     if (this.mode === 'arcade') {
       if (this.shields <= 0) {
         this.state = 'GAME_OVER';
-        this.winner = 'sentinel';
+        this.winner = 'robot';
         this.pushHud(true);
         return;
       }
-      // Alternate who serves so player gets to receive menacing Sentinel serves too
-      this.server = winner === 'player' ? 'sentinel' : 'player';
+      // Alternate who serves so player gets to receive menacing Robot serves too
+      this.server = winner === 'player' ? 'robot' : 'player';
     } else {
       // Story Mode: Stage 1 (First to 5, win by 2) -> Surprise Stage 2 Cutscene -> Stage 2 (First to 5, win by 2)
       this.totalDuelPoints += 1;
       const outcome = evaluateStoryMatchOutcome(
         this.storyStage,
         this.playerPoints,
-        this.sentinelPoints
+        this.robotPoints
       );
 
       if (outcome.action === 'trigger_stage2_cutscene') {
@@ -816,7 +816,7 @@ export class GameEngine {
         if (this.winner === 'player') {
           const diffBonus =
             this.difficulty === 'hard' ? 4000 : this.difficulty === 'medium' ? 2500 : 1400;
-          const marginBonus = (this.playerPoints - this.sentinelPoints) * 320;
+          const marginBonus = (this.playerPoints - this.robotPoints) * 320;
           this.score += diffBonus + marginBonus;
         }
         this.state = 'GAME_OVER';
@@ -826,10 +826,10 @@ export class GameEngine {
 
       // Service rotation: every 2 points (every 1 at deuce 4-4+)
       const deuceThreshold = STORY_POINTS_TO_WIN - 1;
-      if (this.playerPoints >= deuceThreshold && this.sentinelPoints >= deuceThreshold) {
-        this.server = this.server === 'player' ? 'sentinel' : 'player';
+      if (this.playerPoints >= deuceThreshold && this.robotPoints >= deuceThreshold) {
+        this.server = this.server === 'player' ? 'robot' : 'player';
       } else if (this.totalDuelPoints % 2 === 0) {
-        this.server = this.server === 'player' ? 'sentinel' : 'player';
+        this.server = this.server === 'player' ? 'robot' : 'player';
       }
     }
 
@@ -1080,7 +1080,7 @@ export class GameEngine {
     if (!force && !this.running) return;
     const phase = this.getCurrentThreatPhase();
     const smashWarning =
-      (this.sceneManager.sentinelController?.getSmashTelegraph() ?? 0) > 0.15 ||
+      (this.sceneManager.robotController?.getSmashTelegraph() ?? 0) > 0.15 ||
       (this.ball.active && this.ball.isCrimsonSmash);
 
     this.onHudUpdate({
@@ -1098,7 +1098,7 @@ export class GameEngine {
       shields: this.shields,
       maxShields: this.maxShields,
       playerPoints: this.playerPoints,
-      sentinelPoints: this.sentinelPoints,
+      robotPoints: this.robotPoints,
       server: this.server,
       focus: Math.round(this.focus),
       bulletTimeActive: this.bulletTimeActive,

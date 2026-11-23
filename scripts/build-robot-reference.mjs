@@ -1,8 +1,8 @@
 /**
- * Procedural 1:1 Artwork-Faithful Hero 3D Boss Model Builder — Sentinel Reference
- * Output: `public/models/sentinel_reference.glb`
+ * Procedural 1:1 Artwork-Faithful Hero 3D Boss Model Builder — Robot Reference
+ * Output: `public/models/robot_reference.glb`
  *
- * Engineered to match the reference Sentinel Pong artwork with 1:1 silhouette & detail fidelity:
+ * Engineered to match the reference Robot Pong artwork with 1:1 silhouette & detail fidelity:
  * - Taller, fuller rounded beetle-skull patchwork carapace (~1.95m W x 1.05m H x 1.75m D)
  *   built from 45+ individually beveled dark charred-iron overlapping hull tiles, staggered
  *   patchwork seam straps, recessed mechanical under-ribs, forged bolts, cavernous craggy
@@ -35,7 +35,7 @@ import {
 } from './glb-builder.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const OUTPUT_PATH = path.resolve(__dirname, '../public/models/sentinel_reference.glb');
+const OUTPUT_PATH = path.resolve(__dirname, '../public/models/robot_reference.glb');
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG & Math Helpers
@@ -892,7 +892,7 @@ function createMaterials() {
   // Primary charred patchwork iron carapace & armored vertebra outer shells
   const armorPrimary = attachPBRTextures(
     new THREE.MeshStandardMaterial({
-      name: 'SentinelCharredIronArmor',
+      name: 'RobotCharredIronArmor',
       color: 0xffffff,
       roughness: 1.0,
       metalness: 1.0,
@@ -908,7 +908,7 @@ function createMaterials() {
   // Darker matte-gunmetal camera barrels, cavernous mechanical chin/underbelly & flex bellows
   const armorDark = attachPBRTextures(
     new THREE.MeshStandardMaterial({
-      name: 'SentinelDarkSubchassis',
+      name: 'RobotDarkSubchassis',
       color: 0x484e53,
       roughness: 1.0,
       metalness: 1.0,
@@ -923,7 +923,7 @@ function createMaterials() {
 
   // Forged oiled dark-steel rivets, hydraulic rods, knuckle hinge pins & wire ferrules
   const machinedSteel = new THREE.MeshStandardMaterial({
-    name: 'SentinelMachinedSteel',
+    name: 'RobotMachinedSteel',
     color: 0x677077,
     metalness: 0.94,
     roughness: 0.28,
@@ -931,7 +931,7 @@ function createMaterials() {
 
   // Dark matte-metallic hanging wires, rigid antennae & braided underbelly hoses
   const darkTendrilWire = new THREE.MeshStandardMaterial({
-    name: 'SentinelHangingWireMetal',
+    name: 'RobotHangingWireMetal',
     color: 0x15191b,
     metalness: 0.54,
     roughness: 0.45,
@@ -940,7 +940,7 @@ function createMaterials() {
   // Blazing central main eye lens (molten pure crimson halo + blinding white-crimson pinpoint core)
   const mainEye = attachPBRTextures(
     new THREE.MeshStandardMaterial({
-      name: 'SentinelMainEyeOptic',
+      name: 'RobotMainEyeOptic',
       color: 0xffffff,
       roughness: 0.08,
       metalness: 0.06,
@@ -956,7 +956,7 @@ function createMaterials() {
   // Asymmetric flanking crimson camera-lens sub-eyes
   const subEye = attachPBRTextures(
     new THREE.MeshStandardMaterial({
-      name: 'SentinelSubEyeOptic',
+      name: 'RobotSubEyeOptic',
       color: 0xffffff,
       roughness: 0.10,
       metalness: 0.08,
@@ -970,9 +970,9 @@ function createMaterials() {
   );
 
   // Dynamic threat-phase reactive crimson aperture ring & recessed ventral chin pinpoint sensors
-  // (emissive.r > 0.4, emissive.g < 0.35 -> automatically pulsed by SentinelController!)
+  // (emissive.r > 0.4, emissive.g < 0.35 -> automatically pulsed by RobotController!)
   const crimsonPulseSensor = new THREE.MeshStandardMaterial({
-    name: 'SentinelCrimsonPulseSensor',
+    name: 'RobotCrimsonPulseSensor',
     color: 0x260205,
     emissive: 0xff0d18,
     emissiveIntensity: 2.8,
@@ -983,7 +983,7 @@ function createMaterials() {
   // Subtle recessed pinpoint crimson LED indicator diodes on armored tentacle vertebrae
   // (linear r ≈ 0.31 < 0.4 so they stay subtle & authentic instead of overpowering the silhouette!)
   const tentacleDiode = new THREE.MeshStandardMaterial({
-    name: 'SentinelTentaclePinpointDiode',
+    name: 'RobotTentaclePinpointDiode',
     color: 0x220204,
     emissive: 0x980a10,
     emissiveIntensity: 2.8,
@@ -2127,11 +2127,11 @@ function buildTentacleSegments(
 }
 
 // ---------------------------------------------------------------------------
-// Complete 1:1 Reference Sentinel Assembly
+// Complete 1:1 Reference Robot Assembly
 // ---------------------------------------------------------------------------
-function buildSentinelReferenceModel() {
+function buildRobotReferenceModel() {
   const root = new THREE.Group();
-  root.name = 'SentinelRoot';
+  root.name = 'RobotRoot';
 
   const mats = createMaterials();
 
@@ -2281,7 +2281,7 @@ function buildSentinelReferenceModel() {
   const bgSegPlain = createCentipedeVertebraArchetype(mats, 'bg', false);
   const bgClawArchetype = createBgClawArchetype(mats);
 
-  // 3. 16-Segment Thick Primary Paddle Arm (`PaddleArm_Seg_00`..`15` direct children of SentinelRoot)
+  // 3. 16-Segment Thick Primary Paddle Arm (`PaddleArm_Seg_00`..`15` direct children of RobotRoot)
   buildTentacleSegments(
     root,
     'PaddleArm',
@@ -2299,7 +2299,7 @@ function buildSentinelReferenceModel() {
   const { claw: paddleClaw, fingerTips } = buildPaddleClaw(mats, paddleTipPos, paddleTipTangent);
   root.add(paddleClaw);
 
-  // 4. 8 Sweeping Background Tentacles (`BgTentacle_0`..`7` direct children of SentinelRoot at identity)
+  // 4. 8 Sweeping Background Tentacles (`BgTentacle_0`..`7` direct children of RobotRoot at identity)
   for (let i = 0; i < bgSpecs.length; i++) {
     const spec = bgSpecs[i];
     const curve = new THREE.CatmullRomCurve3(spec.points);
@@ -2336,7 +2336,7 @@ function buildSentinelReferenceModel() {
 // Build, Rigorous Kinematic & Geometric Self-Verification, and Export GLB
 // ---------------------------------------------------------------------------
 const t0 = performance.now();
-const { root, paddleCurve, bgSpecs, fingerTips } = buildSentinelReferenceModel();
+const { root, paddleCurve, bgSpecs, fingerTips } = buildRobotReferenceModel();
 root.updateMatrixWorld(true);
 
 // 1. Verify exact parent-child hierarchy & required node names
@@ -2349,7 +2349,7 @@ const requiredDirectChildren = [
 const directChildNames = new Set(root.children.map((c) => c.name));
 for (const name of requiredDirectChildren) {
   if (!directChildNames.has(name)) {
-    throw new Error(`Hierarchy error: "${name}" must be a direct child of SentinelRoot!`);
+    throw new Error(`Hierarchy error: "${name}" must be a direct child of RobotRoot!`);
   }
 }
 
@@ -2455,7 +2455,7 @@ const fullSize = fullBox.getSize(new THREE.Vector3());
 const result = exportSceneToGLB(root, OUTPUT_PATH);
 const elapsedMs = (performance.now() - t0).toFixed(0);
 
-console.log(`Built Reference Sentinel GLB in ${elapsedMs} ms -> ${result.outputPath}`);
+console.log(`Built Reference Robot GLB in ${elapsedMs} ms -> ${result.outputPath}`);
 console.log(
   `  Size: ${(result.byteLength / 1024).toFixed(1)} KB | Nodes: ${result.nodeCount} | Unique Meshes: ${result.meshCount} | Materials: ${result.materialCount} | Textures: ${result.textureCount}`
 );
@@ -2470,7 +2470,7 @@ console.log(
   `  Carapace + Hanging Beard Bounds: W=${carapaceSize.x.toFixed(2)}m H=${carapaceSize.y.toFixed(2)}m D=${carapaceSize.z.toFixed(2)}m (min=[${carapaceBox.min.toArray().map((n) => n.toFixed(2))}], max=[${carapaceBox.max.toArray().map((n) => n.toFixed(2))}])`
 );
 console.log(
-  `  Full Sentinel Bounds:           W=${fullSize.x.toFixed(2)}m H=${fullSize.y.toFixed(2)}m D=${fullSize.z.toFixed(2)}m (min=[${fullBox.min.toArray().map((n) => n.toFixed(2))}], max=[${fullBox.max.toArray().map((n) => n.toFixed(2))}])`
+  `  Full Robot Bounds:           W=${fullSize.x.toFixed(2)}m H=${fullSize.y.toFixed(2)}m D=${fullSize.z.toFixed(2)}m (min=[${fullBox.min.toArray().map((n) => n.toFixed(2))}], max=[${fullBox.max.toArray().map((n) => n.toFixed(2))}])`
 );
 console.log(
   `  PaddleClaw Pos: [${clawObj.position.toArray().map((n) => n.toFixed(3))}] | PaddleSocket Local: [${socketObj.position.toArray().map((n) => n.toFixed(3))}] | Socket World +Z: [${socketForward.toArray().map((n) => n.toFixed(3))}]`

@@ -70,5 +70,5 @@ server.on('error', (err) => {
 });
 
 server.listen(currentPort, HOST, () => {
-  console.log(`Sentinel Pong production server listening on http://${HOST}:${currentPort}`);
+  console.log(`Robot Pong production server listening on http://${HOST}:${currentPort}`);
 });

@@ -40,7 +40,7 @@ export interface SubmitScoreResponse {
   error?: string;
 }
 
-const LOCAL_STORAGE_KEY = 'sentinel_pong_leaderboard_v1';
+const LOCAL_STORAGE_KEY = 'robot_pong_leaderboard_v1';
 
 const FALLBACK_SEEDS: Record<GameMode, LeaderboardEntry[]> = {
   arcade: [],

@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SENTINEL PONG // Matrix 3D Table Tennis</title>
+    <title>ROBOT PONG // Matrix 3D Table Tennis</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="app">
       <!-- 3D WebGL Viewport -->
-      <div id="canvas-container" aria-label="Sentinel Pong 3D Arena"></div>
+      <div id="canvas-container" aria-label="Robot Pong 3D Arena"></div>
 
       <!-- Bullet-Time, Smash Warning & Cinematic Letterbox Overlays -->
       <div id="fx-bullet-vignette" class="fx-overlay" aria-hidden="true"></div>
@@ -23,7 +23,7 @@
       <!-- Loading Overlay -->
       <div id="screen-loading" class="modal-backdrop">
         <div class="terminal-card loading-card">
-          <h1 class="brand-title">SENTINEL <span class="accent-red">PONG</span></h1>
+          <h1 class="brand-title">ROBOT <span class="accent-red">PONG</span></h1>
           <p id="loading-status" class="muted-copy">Loading 3D models...</p>
           <div class="progress-track">
             <div id="loading-bar" class="progress-fill" style="width: 5%"></div>
@@ -56,7 +56,7 @@
             <div id="hud-duel-score" class="duel-score hidden">
               <span class="duel-you">YOU <strong id="hud-p-pts">0</strong></span>
               <span class="duel-sep">:</span>
-              <span class="duel-ai"><strong id="hud-s-pts">0</strong> SENTINEL</span>
+              <span class="duel-ai"><strong id="hud-r-pts">0</strong> ROBOT</span>
             </div>
           </div>
 
@@ -112,11 +112,11 @@
         </div>
       </div>
 
-      <!-- Main Menu Overlay (minimal bottom dock so the 3D Sentinel stays front and center) -->
+      <!-- Main Menu Overlay (minimal bottom dock so the 3D Robot stays front and center) -->
       <div id="screen-menu" class="menu-overlay hidden">
         <div class="menu-grid">
           <section class="terminal-card menu-left">
-            <h1 class="brand-title">SENTINEL <span class="accent-red">PONG</span></h1>
+            <h1 class="brand-title">ROBOT <span class="accent-red">PONG</span></h1>
 
             <div class="mode-selector" role="tablist" aria-label="Game Mode">
               <button

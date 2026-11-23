@@ -4,7 +4,7 @@ import { createApiMiddleware } from './server/apiMiddleware.mjs';
 function leaderboardApiPlugin() {
   const middleware = createApiMiddleware();
   return {
-    name: 'sentinel-pong-leaderboard-api',
+    name: 'robot-pong-leaderboard-api',
     configureServer(server) {
       server.middlewares.use(middleware);
     },

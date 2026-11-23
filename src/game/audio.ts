@@ -1,6 +1,6 @@
 /**
- * Procedural Web Audio API sound engine for Sentinel Pong.
- * Synthesizes authentic ping-pong ball acoustics, mechanical Sentinel cues,
+ * Procedural Web Audio API sound engine for Robot Pong.
+ * Synthesizes authentic ping-pong ball acoustics, mechanical robot cues,
  * Bullet Time dilation bass drops, and cyberpunk UI stingers with zero external assets.
  */
 export class SoundEngine {
@@ -145,7 +145,7 @@ export class SoundEngine {
   }
 
   public playPaddleHit(opts: {
-    by: 'player' | 'sentinel';
+    by: 'player' | 'robot';
     perfect: boolean;
     smash: boolean;
     curve: boolean;
@@ -157,15 +157,15 @@ export class SoundEngine {
     // Crisp wood-rubber crack
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    osc.type = opts.by === 'sentinel' ? 'sawtooth' : 'triangle';
+    osc.type = opts.by === 'robot' ? 'sawtooth' : 'triangle';
 
-    const startFreq = opts.by === 'sentinel' ? (opts.smash ? 410 : 540) : opts.smash ? 720 : 610;
+    const startFreq = opts.by === 'robot' ? (opts.smash ? 410 : 540) : opts.smash ? 720 : 610;
     osc.frequency.setValueAtTime(startFreq, now);
     osc.frequency.exponentialRampToValueAtTime(startFreq * 0.34, now + 0.085);
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    filter.frequency.value = opts.by === 'sentinel' ? 950 : 1350;
+    filter.frequency.value = opts.by === 'robot' ? 950 : 1350;
     filter.Q.value = 1.6;
 
     gain.gain.setValueAtTime(opts.smash ? 0.44 : 0.28, now);
@@ -192,8 +192,8 @@ export class SoundEngine {
       chime.stop(now + 0.17);
     }
 
-    // Mechanical sub-thump for Sentinel smash
-    if (opts.by === 'sentinel' && opts.smash) {
+    // Mechanical sub-thump for Robot smash
+    if (opts.by === 'robot' && opts.smash) {
       const sub = this.ctx.createOscillator();
       const subGain = this.ctx.createGain();
       sub.type = 'sawtooth';

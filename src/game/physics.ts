@@ -1,6 +1,6 @@
-import { BALL, PLAYER_PADDLE, SENTINEL, TABLE } from './constants';
+import { BALL, PLAYER_PADDLE, ROBOT, TABLE } from './constants';
 
-export type Side = 'player' | 'sentinel';
+export type Side = 'player' | 'robot';
 
 export interface Vec3 {
   x: number;
@@ -22,7 +22,7 @@ export interface BallState {
   active: boolean;
   lastHitBy: Side | null;
   bouncesOnPlayer: number;
-  bouncesOnSentinel: number;
+  bouncesOnRobot: number;
   hitCooldown: number;
   isCrimsonSmash: boolean;
   isPlayerSmash: boolean;
@@ -69,7 +69,7 @@ export function createBallState(): BallState {
     active: false,
     lastHitBy: null,
     bouncesOnPlayer: 0,
-    bouncesOnSentinel: 0,
+    bouncesOnRobot: 0,
     hitCooldown: 0,
     isCrimsonSmash: false,
     isPlayerSmash: false,
@@ -108,7 +108,7 @@ export function solveBallisticShot(
   const magnusDriftX = 0.5 * approxMagnusAx * T * T;
 
   // Estimate vertical Magnus dip from topspin (spin.x):
-  // positive spin.x with negative vz (player -> sentinel) pushes ball DOWN (classic topspin dive!)
+  // positive spin.x with negative vz (player -> robot) pushes ball DOWN (classic topspin dive!)
   const magnusAy = BALL.MAGNUS_COEFF * spin.x * approxVz;
   const effG = BALL.GRAVITY + magnusAy;
 
@@ -318,7 +318,7 @@ export function computeEdgeJumpTargetX(input: EdgeJumpInput): {
     return { active: false, targetX: baseTargetX };
   }
 
-  // Don't auto-jump far outside the sidelines for an unbounced Sentinel out-of-bounds fault
+  // Don't auto-jump far outside the sidelines for an unbounced Robot out-of-bounds fault
   const maxReach =
     ball.bouncesOnPlayer >= 1 ? EDGE_JUMP_MAX_X : TABLE.HALF_WIDTH + 0.24;
   if (Math.abs(pred.x) > maxReach) {
@@ -349,8 +349,8 @@ export function checkSweptPaddleHit(
 ): { hit: boolean; hitPos: Vec3; offsetX: number; offsetY: number; dist: number } {
   const paddleZ = paddle.pos.z;
   const prevPaddleZ = paddle.prevPos.z;
-  const rx = side === 'player' ? PLAYER_PADDLE.HIT_RADIUS_X : SENTINEL.HIT_RADIUS_X;
-  const ry = side === 'player' ? PLAYER_PADDLE.HIT_RADIUS_Y : SENTINEL.HIT_RADIUS_Y;
+  const rx = side === 'player' ? PLAYER_PADDLE.HIT_RADIUS_X : ROBOT.HIT_RADIUS_X;
+  const ry = side === 'player' ? PLAYER_PADDLE.HIT_RADIUS_Y : ROBOT.HIT_RADIUS_Y;
   const thickness = side === 'player' ? 0.155 : 0.17;
 
   // Relative Z signed distance before and after substep
@@ -405,8 +405,8 @@ export function checkSweptPaddleHit(
 export interface StepOptions {
   playerPaddle: PaddleState;
   ghostPlayerPaddle?: PaddleState;
-  sentinelPaddle: PaddleState;
-  sentinelReturnFn?: (ball: BallState, hitPos: Vec3) => {
+  robotPaddle: PaddleState;
+  robotReturnFn?: (ball: BallState, hitPos: Vec3) => {
     targetX: number;
     targetZ: number;
     flightTime: number;
@@ -509,14 +509,14 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
       ball.spin.x *= 0.72;
       ball.spin.y *= 0.78;
 
-      const side: Side = ball.pos.z >= 0 ? 'player' : 'sentinel';
+      const side: Side = ball.pos.z >= 0 ? 'player' : 'robot';
       if (side === 'player') {
         ball.bouncesOnPlayer += 1;
       } else {
-        ball.bouncesOnSentinel += 1;
+        ball.bouncesOnRobot += 1;
       }
 
-      const bounceCount = side === 'player' ? ball.bouncesOnPlayer : ball.bouncesOnSentinel;
+      const bounceCount = side === 'player' ? ball.bouncesOnPlayer : ball.bouncesOnRobot;
       events.push({
         type: 'table_bounce',
         side,
@@ -530,7 +530,7 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
         ball.active = false;
         events.push({
           type: 'point_end',
-          winner: side === 'player' ? 'sentinel' : 'player',
+          winner: side === 'player' ? 'robot' : 'player',
           reason: 'double_bounce',
           pos: { ...ball.pos },
         });
@@ -544,7 +544,7 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
           ball.active = false;
           events.push({
             type: 'point_end',
-            winner: side === 'player' ? 'sentinel' : 'player',
+            winner: side === 'player' ? 'robot' : 'player',
             reason: 'net_fault',
             pos: { ...ball.pos },
           });
@@ -580,7 +580,7 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
           swingForward > 2.3 ||
           (perfect && hitRes.hitPos.y > TABLE.SURFACE_Y + 0.34);
 
-        // Aim target on Sentinel half based on paddle position, horizontal swipe, and contact offset
+        // Aim target on Robot half based on paddle position, horizontal swipe, and contact offset
         let targetX =
           hitRes.hitPos.x * 0.42 + swingHoriz * 0.145 + hitRes.offsetX * 1.4;
         // Keep well-aimed shots crisp while allowing wild overswings to risk going wide
@@ -627,7 +627,7 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
         ball.spin = { x: spinX, y: spinY, z: 0 };
         ball.lastHitBy = 'player';
         ball.bouncesOnPlayer = 0;
-        ball.bouncesOnSentinel = 0;
+        ball.bouncesOnRobot = 0;
         ball.hitCooldown = 0.12;
         ball.isPlayerSmash = isSmash;
         ball.isCrimsonSmash = false;
@@ -649,17 +649,17 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
       }
     }
 
-    // 4. Sentinel paddle swept collision check
+    // 4. Robot paddle swept collision check
     if (
       ball.hitCooldown <= 0 &&
-      ball.lastHitBy !== 'sentinel' &&
+      ball.lastHitBy !== 'robot' &&
       ball.vel.z < -0.1 &&
-      ball.bouncesOnSentinel >= 1
+      ball.bouncesOnRobot >= 1
     ) {
-      const hitRes = checkSweptPaddleHit(prevPos, ball.pos, opts.sentinelPaddle, 'sentinel');
+      const hitRes = checkSweptPaddleHit(prevPos, ball.pos, opts.robotPaddle, 'robot');
       if (hitRes.hit) {
-        const plan = opts.sentinelReturnFn
-          ? opts.sentinelReturnFn(ball, hitRes.hitPos)
+        const plan = opts.robotReturnFn
+          ? opts.robotReturnFn(ball, hitRes.hitPos)
           : {
               targetX: clamp(-hitRes.hitPos.x * 0.6, -0.58, 0.58),
               targetZ: 0.92,
@@ -679,12 +679,12 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
 
         ball.pos.x = hitRes.hitPos.x;
         ball.pos.y = hitRes.hitPos.y;
-        ball.pos.z = Math.max(hitRes.hitPos.z, opts.sentinelPaddle.pos.z + 0.04);
+        ball.pos.z = Math.max(hitRes.hitPos.z, opts.robotPaddle.pos.z + 0.04);
         ball.vel = newVel;
         ball.spin = { ...plan.spin };
-        ball.lastHitBy = 'sentinel';
+        ball.lastHitBy = 'robot';
         ball.bouncesOnPlayer = 0;
-        ball.bouncesOnSentinel = 0;
+        ball.bouncesOnRobot = 0;
         ball.hitCooldown = 0.14;
         ball.isCrimsonSmash = plan.isSmash;
         ball.isPlayerSmash = false;
@@ -693,7 +693,7 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
 
         events.push({
           type: 'paddle_hit',
-          by: 'sentinel',
+          by: 'robot',
           pos: { ...ball.pos },
           speed: Math.hypot(newVel.x, newVel.y, newVel.z),
           perfect: plan.isSmash,
@@ -709,34 +709,34 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
     // 5. Out-of-bounds / floor / missed ball detection
     const fellBelowTable = ball.pos.y < TABLE.SURFACE_Y - 0.34;
     const farBehindPlayer = ball.pos.z > TABLE.HALF_LENGTH + 1.15;
-    const farBehindSentinel = ball.pos.z < -(TABLE.HALF_LENGTH + 1.15);
+    const farBehindRobot = ball.pos.z < -(TABLE.HALF_LENGTH + 1.15);
     const farWide = Math.abs(ball.pos.x) > TABLE.HALF_WIDTH + 1.4;
 
-    if (fellBelowTable || farBehindPlayer || farBehindSentinel || farWide) {
+    if (fellBelowTable || farBehindPlayer || farBehindRobot || farWide) {
       ball.active = false;
       let winner: Side;
       let reason: 'out' | 'missed' = 'out';
 
       if (ball.lastHitBy === 'player') {
-        // Player hit it: if it bounced on Sentinel's side first, player scored a winner!
-        // Otherwise it flew out without touching Sentinel's half -> Sentinel's point.
-        if (ball.bouncesOnSentinel >= 1) {
+        // Player hit it: if it bounced on Robot's side first, player scored a winner!
+        // Otherwise it flew out without touching Robot's half -> Robot's point.
+        if (ball.bouncesOnRobot >= 1) {
           winner = 'player';
           reason = 'missed';
         } else {
-          winner = 'sentinel';
+          winner = 'robot';
           reason = 'out';
         }
-      } else if (ball.lastHitBy === 'sentinel') {
+      } else if (ball.lastHitBy === 'robot') {
         if (ball.bouncesOnPlayer >= 1) {
-          winner = 'sentinel';
+          winner = 'robot';
           reason = 'missed';
         } else {
           winner = 'player';
           reason = 'out';
         }
       } else {
-        winner = ball.pos.z > 0 ? 'sentinel' : 'player';
+        winner = ball.pos.z > 0 ? 'robot' : 'player';
       }
 
       events.push({
@@ -756,7 +756,7 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
         ball.active = false;
         events.push({
           type: 'point_end',
-          winner: ball.pos.z >= 0 ? 'sentinel' : 'player',
+          winner: ball.pos.z >= 0 ? 'robot' : 'player',
           reason: 'timeout',
           pos: { ...ball.pos },
         });

@@ -4,17 +4,17 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { SENTINEL, TABLE, type StoryStage, type ThreatPhaseConfig } from './constants';
+import { ROBOT, TABLE, type StoryStage, type ThreatPhaseConfig } from './constants';
 import type { SoundEngine } from './audio';
 import { createMatrixRainWalls, GameplayVFX, SteamMistSystem } from './matrixEffects';
 import { getRobotSkin, type RobotSkinDefinition } from './robotSkins';
-import { SentinelController } from './sentinelRig';
+import { RobotController } from './robotRig';
 import type { BallState, PaddleState } from './physics';
 
 export interface LoadedModels {
-  sentinel: THREE.Object3D;
+  robot: THREE.Object3D;
   table: THREE.Object3D;
-  sentinelPaddle: THREE.Object3D;
+  robotPaddle: THREE.Object3D;
   playerPaddle: THREE.Object3D;
   ball: THREE.Object3D;
   arena: THREE.Object3D;
@@ -28,7 +28,7 @@ export interface SceneCallbacks {
 
 /**
  * Generates a synthetic cyberpunk studio environment map (emerald server zenith +
- * warm amber catwalk horizon) so the wet tabletop and gunmetal Sentinel armor reflect
+ * warm amber catwalk horizon) so the wet tabletop and gunmetal robot armor reflect
  * vibrant green and orange highlights just like the reference artwork.
  */
 function buildCyberpunkEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
@@ -56,7 +56,7 @@ function buildCyberpunkEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
     envScene.add(lamp);
   }
 
-  // Crimson central Sentinel glow accent in front (-Z)
+  // Crimson central Robot glow accent in front (-Z)
   const redMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.18, 0.22) });
   const redBeacon = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 12), redMat);
   redBeacon.position.set(0, 1.8, -6.5);
@@ -128,22 +128,22 @@ export class SceneManager {
   private bloomPass: UnrealBloomPass | null = null;
   private bloomEnabled = true;
 
-  public sentinelController: SentinelController | null = null;
+  public robotController: RobotController | null = null;
   public playerPaddleObj: THREE.Object3D | null = null;
   private ghostPaddleObj: THREE.Object3D | null = null;
   private ghostPaddleMat: THREE.MeshBasicMaterial | null = null;
   private ghostTetherLine: THREE.Line | null = null;
   private ghostTetherMat: THREE.LineBasicMaterial | null = null;
   private ghostTetherPositions = new Float32Array(6);
-  public sentinelPaddleObj: THREE.Object3D | null = null;
+  public robotPaddleObj: THREE.Object3D | null = null;
   public ballObj: THREE.Object3D | null = null;
   public readonly vfx: GameplayVFX;
   private readonly steam: SteamMistSystem;
   private readonly matrixRain: ReturnType<typeof createMatrixRainWalls>;
-  private readonly sentinelEyeLight: THREE.PointLight;
+  private readonly robotEyeLight: THREE.PointLight;
   private readonly gltfLoader = new GLTFLoader();
-  private readonly sentinelSkinCache = new Map<string, THREE.Object3D>();
-  private activeSentinelObj: THREE.Object3D | null = null;
+  private readonly robotSkinCache = new Map<string, THREE.Object3D>();
+  private activeRobotObj: THREE.Object3D | null = null;
   private activeSkinId: string = 'classic';
   private skinLoadSeq = 0;
 
@@ -219,7 +219,7 @@ export class SceneManager {
     this.scene.fog = new THREE.FogExp2(0x06140d, 0.048);
     this.scene.environment = buildCyberpunkEnvMap(this.renderer);
 
-    // Camera framed over player's end of the table looking right at the towering Sentinel
+    // Camera framed over player's end of the table looking right at the towering Robot
     const aspect =
       (container.clientWidth || window.innerWidth) /
       Math.max(1, container.clientHeight || window.innerHeight);
@@ -245,7 +245,7 @@ export class SceneManager {
     overheadKey.shadow.bias = -0.0006;
     this.scene.add(overheadKey);
 
-    // 2) Emerald rim backlight separating Sentinel carapace silhouette from the digital rain
+    // 2) Emerald rim backlight separating Robot carapace silhouette from the digital rain
     const emeraldRim = new THREE.DirectionalLight(0x18e06c, 1.05);
     emeraldRim.position.set(-1.2, 6.2, -8.5);
     this.scene.add(emeraldRim);
@@ -267,10 +267,10 @@ export class SceneManager {
     amberRearRight.position.set(3.3, 1.55, -3.9);
     this.scene.add(amberRearRight);
 
-    // 4) Dynamic Crimson Sentinel Eye Light
-    this.sentinelEyeLight = new THREE.PointLight(0xff1428, 8.5, 9.5, 1.6);
-    this.sentinelEyeLight.position.set(0, 2.05, -1.65);
-    this.scene.add(this.sentinelEyeLight);
+    // 4) Dynamic Crimson Robot Eye Light
+    this.robotEyeLight = new THREE.PointLight(0xff1428, 8.5, 9.5, 1.6);
+    this.robotEyeLight.position.set(0, 2.05, -1.65);
+    this.scene.add(this.robotEyeLight);
 
     // 5) Stage 2 Distant Cityscape Atmospheric Lights (intensity = 0 on Stage 1 so Stage 1 is untouched!)
     this.cityEmeraldLight = new THREE.DirectionalLight(0x1dff80, 0);
@@ -364,7 +364,7 @@ export class SceneManager {
     const specs: { key: string; url: string; label: string }[] = [
       { key: 'arena', url: '/models/arena_structure.glb', label: 'Industrial Cathedral' },
       { key: 'table', url: '/models/table.glb', label: 'Wet Tournament Table' },
-      { key: 'sentinel', url: skin.modelUrl, label: `Sentinel (${skin.name})` },
+      { key: 'robot', url: skin.modelUrl, label: `Robot (${skin.name})` },
       { key: 'paddle', url: '/models/paddle.glb', label: 'Table Tennis Paddles' },
       { key: 'ball', url: '/models/ball.glb', label: 'Regulation Ball' },
     ];
@@ -401,8 +401,8 @@ export class SceneManager {
 
     const arena = loaded.arena;
     const table = loaded.table;
-    const sentinel = loaded.sentinel;
-    const sentinelPaddle = loaded.paddle;
+    const robot = loaded.robot;
+    const robotPaddle = loaded.paddle;
     const playerPaddle = loaded.paddle.clone(true);
     const ball = loaded.ball;
 
@@ -419,8 +419,8 @@ export class SceneManager {
 
     enableShadows(arena, false, true);
     enableShadows(table, true, true);
-    enableShadows(sentinel, true, true);
-    enableShadows(sentinelPaddle, true, false);
+    enableShadows(robot, true, true);
+    enableShadows(robotPaddle, true, false);
     enableShadows(playerPaddle, false, false);
     enableShadows(ball, true, false);
 
@@ -501,34 +501,34 @@ export class SceneManager {
 
     this.scene.add(arena);
     this.scene.add(table);
-    this.scene.add(sentinel);
-    this.scene.add(sentinelPaddle);
+    this.scene.add(robot);
+    this.scene.add(robotPaddle);
     this.scene.add(playerPaddle);
     this.scene.add(ghostPaddle);
     this.scene.add(tetherLine);
     this.scene.add(ball);
 
-    this.sentinelSkinCache.set(skin.id, sentinel);
-    this.activeSentinelObj = sentinel;
+    this.robotSkinCache.set(skin.id, robot);
+    this.activeRobotObj = robot;
     this.activeSkinId = skin.id;
-    this.sentinelPaddleObj = sentinelPaddle;
+    this.robotPaddleObj = robotPaddle;
     this.playerPaddleObj = playerPaddle;
     this.ghostPaddleObj = ghostPaddle;
     this.ghostPaddleMat = ghostMat;
     this.ghostTetherLine = tetherLine;
     this.ghostTetherMat = tetherMat;
     this.ballObj = ball;
-    this.sentinelController = new SentinelController(
-      sentinel,
-      sentinelPaddle,
-      this.sentinelEyeLight,
+    this.robotController = new RobotController(
+      robot,
+      robotPaddle,
+      this.robotEyeLight,
       skin.armArcStyle
     );
 
     return {
-      sentinel,
+      robot,
       table,
-      sentinelPaddle,
+      robotPaddle,
       playerPaddle,
       ball,
       arena,
@@ -536,19 +536,19 @@ export class SceneManager {
   }
 
   /**
-   * Hot-swaps the Sentinel 3D model skin live in the scene (cached after first load,
+   * Hot-swaps the Robot 3D model skin live in the scene (cached after first load,
    * race-guarded via monotonic sequence id, preserving active gameplay rig state).
    */
-  public async setSentinelSkin(skin: RobotSkinDefinition): Promise<{ applied: boolean; skinId: string }> {
-    if (this.activeSkinId === skin.id && this.activeSentinelObj) {
+  public async setRobotSkin(skin: RobotSkinDefinition): Promise<{ applied: boolean; skinId: string }> {
+    if (this.activeSkinId === skin.id && this.activeRobotObj) {
       return { applied: true, skinId: skin.id };
     }
-    if (!this.sentinelPaddleObj) {
+    if (!this.robotPaddleObj) {
       throw new Error('Arena is not initialized yet.');
     }
 
     const reqSeq = ++this.skinLoadSeq;
-    let model = this.sentinelSkinCache.get(skin.id);
+    let model = this.robotSkinCache.get(skin.id);
 
     if (!model) {
       let lastErr: unknown;
@@ -577,7 +577,7 @@ export class SceneManager {
           m.receiveShadow = true;
         }
       });
-      this.sentinelSkinCache.set(skin.id, model);
+      this.robotSkinCache.set(skin.id, model);
     }
 
     // Ignore stale async completion if user clicked another skin while loading
@@ -585,25 +585,25 @@ export class SceneManager {
       return { applied: false, skinId: this.activeSkinId };
     }
 
-    const prevState = this.sentinelController?.exportState();
-    if (this.activeSentinelObj) {
-      this.scene.remove(this.activeSentinelObj);
+    const prevState = this.robotController?.exportState();
+    if (this.activeRobotObj) {
+      this.scene.remove(this.activeRobotObj);
     }
 
     this.scene.add(model);
-    this.activeSentinelObj = model;
+    this.activeRobotObj = model;
     this.activeSkinId = skin.id;
 
-    const nextCtrl = new SentinelController(
+    const nextCtrl = new RobotController(
       model,
-      this.sentinelPaddleObj,
-      this.sentinelEyeLight,
+      this.robotPaddleObj,
+      this.robotEyeLight,
       skin.armArcStyle
     );
     if (prevState) {
       nextCtrl.importState(prevState);
     }
-    this.sentinelController = nextCtrl;
+    this.robotController = nextCtrl;
 
     return { applied: true, skinId: skin.id };
   }
@@ -613,7 +613,7 @@ export class SceneManager {
   }
 
   /**
-   * Silently preloads Stage 2 assets (1:1 Apex Sentinel + Matrix Cityscape Expansion)
+   * Silently preloads Stage 2 assets (1:1 Apex Robot + Matrix Cityscape Expansion)
    * in the background without exposing them in UI or altering Stage 1.
    */
   public preloadStage2Assets(): Promise<void> {
@@ -623,7 +623,7 @@ export class SceneManager {
       const refSkin = getRobotSkin('reference');
 
       const loadSkinTask = (async () => {
-        if (this.sentinelSkinCache.has(refSkin.id)) return;
+        if (this.robotSkinCache.has(refSkin.id)) return;
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
             const gltf = await this.gltfLoader.loadAsync(refSkin.modelUrl);
@@ -634,7 +634,7 @@ export class SceneManager {
                 m.receiveShadow = true;
               }
             });
-            this.sentinelSkinCache.set(refSkin.id, gltf.scene);
+            this.robotSkinCache.set(refSkin.id, gltf.scene);
             return;
           } catch {
             await new Promise((r) => setTimeout(r, 250));
@@ -688,26 +688,26 @@ export class SceneManager {
 
   /**
    * Snaps environment and active boss cleanly to Stage 1 (exact classic look)
-   * or Stage 2 (1:1 Apex Sentinel + expanded Matrix Machine Cityscape).
+   * or Stage 2 (1:1 Apex Robot + expanded Matrix Machine Cityscape).
    */
   public async setEnvironmentStage(stage: StoryStage): Promise<void> {
     this.cutsceneActive = false;
     this.currentStage = stage;
 
     // Clean up any leftover cutscene actors
-    if (this.defeatedMk1Obj && this.defeatedMk1Obj !== this.activeSentinelObj) {
+    if (this.defeatedMk1Obj && this.defeatedMk1Obj !== this.activeRobotObj) {
       this.scene.remove(this.defeatedMk1Obj);
       this.defeatedMk1Obj.visible = true;
       this.defeatedMk1Obj.rotation.set(0, 0, 0);
       this.defeatedMk1Obj.position.set(
-        SENTINEL.HOME_POS.x,
-        SENTINEL.HOME_POS.y,
-        SENTINEL.HOME_POS.z
+        ROBOT.HOME_POS.x,
+        ROBOT.HOME_POS.y,
+        ROBOT.HOME_POS.z
       );
     }
     this.defeatedMk1Obj = null;
 
-    if (this.apexCutsceneObj && this.apexCutsceneObj !== this.activeSentinelObj) {
+    if (this.apexCutsceneObj && this.apexCutsceneObj !== this.activeRobotObj) {
       this.scene.remove(this.apexCutsceneObj);
     }
     this.apexCutsceneObj = null;
@@ -718,18 +718,18 @@ export class SceneManager {
     if (stage === 2) {
       await this.preloadStage2Assets();
       const refSkin = getRobotSkin('reference');
-      await this.setSentinelSkin(refSkin);
+      await this.setRobotSkin(refSkin);
       this.applyExpansionVisuals(1);
     } else {
       const classicSkin = getRobotSkin('classic');
-      await this.setSentinelSkin(classicSkin);
-      if (this.activeSentinelObj) {
-        this.activeSentinelObj.visible = true;
-        this.activeSentinelObj.rotation.set(0, 0, 0);
-        this.activeSentinelObj.position.set(
-          SENTINEL.HOME_POS.x,
-          SENTINEL.HOME_POS.y,
-          SENTINEL.HOME_POS.z
+      await this.setRobotSkin(classicSkin);
+      if (this.activeRobotObj) {
+        this.activeRobotObj.visible = true;
+        this.activeRobotObj.rotation.set(0, 0, 0);
+        this.activeRobotObj.position.set(
+          ROBOT.HOME_POS.x,
+          ROBOT.HOME_POS.y,
+          ROBOT.HOME_POS.z
         );
       }
       this.applyExpansionVisuals(0);
@@ -742,14 +742,14 @@ export class SceneManager {
 
   /**
    * Begins the real-time 3D Story Mode Stage 1 -> Stage 2 transformation cutscene:
-   * MK-I sparks/fails -> 1:1 Apex Sentinel descends & crushes MK-I -> Cityscape expands outward.
+   * MK-I sparks/fails -> 1:1 Apex Robot descends & crushes MK-I -> Cityscape expands outward.
    */
   public async beginStage2Cutscene(): Promise<void> {
     await this.preloadStage2Assets();
 
     // Ensure MK-I classic is mounted as the victim at its exact current position
-    const classicObj = this.sentinelSkinCache.get('classic') ?? this.activeSentinelObj;
-    const apexObj = this.sentinelSkinCache.get('reference') ?? null;
+    const classicObj = this.robotSkinCache.get('classic') ?? this.activeRobotObj;
+    const apexObj = this.robotSkinCache.get('reference') ?? null;
 
     this.cutsceneActive = true;
     if (this.ballObj) this.ballObj.visible = false;
@@ -813,8 +813,8 @@ export class SceneManager {
 
     if (this.defeatedMk1Obj && elapsed < 2.0) {
       // Keep MK-I's arm actively gripping the red paddle while sparking & failing
-      if (this.sentinelController && this.sentinelController.root === this.defeatedMk1Obj) {
-        this.sentinelController.update(realDt, ball, stage2Phase, false);
+      if (this.robotController && this.robotController.root === this.defeatedMk1Obj) {
+        this.robotController.update(realDt, ball, stage2Phase, false);
       }
       const stress = Math.min(1, elapsed / 1.5);
       const jitter = 0.045 + stress * 0.08;
@@ -841,13 +841,13 @@ export class SceneManager {
     }
 
     // Between crush impact (2.00s) and Apex snatch (2.22s), red paddle pops briefly into the air
-    if (elapsed >= 2.0 && elapsed < 2.22 && this.sentinelPaddleObj) {
+    if (elapsed >= 2.0 && elapsed < 2.22 && this.robotPaddleObj) {
       const popT = (elapsed - 2.0) / 0.22;
-      this.sentinelPaddleObj.position.y = TABLE.SURFACE_Y + 0.34 + Math.sin(popT * Math.PI) * 0.28;
-      this.sentinelPaddleObj.rotation.z = popT * 1.4;
+      this.robotPaddleObj.position.y = TABLE.SURFACE_Y + 0.34 + Math.sin(popT * Math.PI) * 0.28;
+      this.robotPaddleObj.rotation.z = popT * 1.4;
     }
 
-    // Phase B (1.0s - 2.15s): 1:1 Apex Sentinel plunges down from ceiling cables & slams MK-I!
+    // Phase B (1.0s - 2.15s): 1:1 Apex Robot plunges down from ceiling cables & slams MK-I!
     if (this.apexCutsceneObj && elapsed >= 0.95 && !this.cutsceneSwappedController) {
       this.apexCutsceneObj.visible = true;
       const diveT = Math.max(0, Math.min(1, (elapsed - 0.95) / 1.05));
@@ -855,16 +855,16 @@ export class SceneManager {
       const easeIn = diveT * diveT * diveT;
       this.apexCutsceneObj.position.set(
         0,
-        7.8 + (SENTINEL.HOME_POS.y + 0.18 - 7.8) * easeIn,
-        -5.6 + (SENTINEL.HOME_POS.z + 0.1 - -5.6) * easeIn
+        7.8 + (ROBOT.HOME_POS.y + 0.18 - 7.8) * easeIn,
+        -5.6 + (ROBOT.HOME_POS.z + 0.1 - -5.6) * easeIn
       );
       this.apexCutsceneObj.rotation.set(0.32 * (1 - easeIn), 0, 0);
-      this.sentinelEyeLight.position.set(
+      this.robotEyeLight.position.set(
         0,
         this.apexCutsceneObj.position.y,
         this.apexCutsceneObj.position.z + 0.85
       );
-      this.sentinelEyeLight.intensity = 10 + diveT * 10;
+      this.robotEyeLight.intensity = 10 + diveT * 10;
     }
 
     // Impact moment (t = 2.00s): Massive metallic crush + shockwave + hurl MK-I into the abyss!
@@ -873,9 +873,9 @@ export class SceneManager {
       audio.playBossCrush();
       this.addCameraShake(0.14);
       const impactCenter = {
-        x: SENTINEL.HOME_POS.x,
-        y: SENTINEL.HOME_POS.y,
-        z: SENTINEL.HOME_POS.z + 0.25,
+        x: ROBOT.HOME_POS.x,
+        y: ROBOT.HOME_POS.y,
+        z: ROBOT.HOME_POS.z + 0.25,
       };
       this.vfx.spawnShockwave(impactCenter, 0xff2842);
       this.vfx.emitSparks(impactCenter, 0xff8a24, 36, 2.3);
@@ -913,22 +913,22 @@ export class SceneManager {
       }
     }
 
-    // At t = 2.22s: Apex Sentinel snaps into command & snatches the airborne red paddle!
-    if (!this.cutsceneSwappedController && elapsed >= 2.22 && this.apexCutsceneObj && this.sentinelPaddleObj) {
+    // At t = 2.22s: Apex Robot snaps into command & snatches the airborne red paddle!
+    if (!this.cutsceneSwappedController && elapsed >= 2.22 && this.apexCutsceneObj && this.robotPaddleObj) {
       this.cutsceneSwappedController = true;
-      this.activeSentinelObj = this.apexCutsceneObj;
+      this.activeRobotObj = this.apexCutsceneObj;
       this.activeSkinId = 'reference';
-      this.sentinelController = new SentinelController(
+      this.robotController = new RobotController(
         this.apexCutsceneObj,
-        this.sentinelPaddleObj,
-        this.sentinelEyeLight,
+        this.robotPaddleObj,
+        this.robotEyeLight,
         'high_coil'
       );
-      this.sentinelController.triggerSwing(true);
+      this.robotController.triggerSwing(true);
     }
 
-    if (this.cutsceneSwappedController && this.sentinelController) {
-      this.sentinelController.update(realDt, ball, stage2Phase, false);
+    if (this.cutsceneSwappedController && this.robotController) {
+      this.robotController.update(realDt, ball, stage2Phase, false);
     }
 
     // Phase C (2.70s - 5.15s): Matrix rain horizon pushes far outward & 3D Machine Cityscape expands!
@@ -983,8 +983,8 @@ export class SceneManager {
     this.camera.position.lerp(this.cutsceneCamPos, Math.min(1, realDt * 7.5));
     this.camera.lookAt(this.cutsceneCamLook);
 
-    if (this.sentinelController) {
-      this.sentinelController.getMainEyeWorldPosition(this.eyeWorldScratch);
+    if (this.robotController) {
+      this.robotController.getMainEyeWorldPosition(this.eyeWorldScratch);
     } else {
       this.eyeWorldScratch.set(0, 2.05, -2.1);
     }
@@ -1097,19 +1097,19 @@ export class SceneManager {
     this.steam.update(this.cameraClock);
 
     // Update gameplay VFX
-    if (this.sentinelController) {
-      this.sentinelController.getMainEyeWorldPosition(this.eyeWorldScratch);
+    if (this.robotController) {
+      this.robotController.getMainEyeWorldPosition(this.eyeWorldScratch);
       this.vfx.update(
         dt,
         realDt,
         ball,
         this.eyeWorldScratch,
-        this.sentinelController.getSmashTelegraph()
+        this.robotController.getSmashTelegraph()
       );
     }
 
     // Dynamic camera framing:
-    // - On Menu: slow cinematic dramatic hero angle showcasing the Sentinel & wet table (just like the reference image!)
+    // - On Menu: slow cinematic dramatic hero angle showcasing the Robot & wet table (just like the reference image!)
     // - In Gameplay: crisp elevated player eye-view tracking subtly with player's paddle for awesome depth clarity
     const shakeX = (Math.random() - 0.5) * this.shakeMagnitude;
     const shakeY = (Math.random() - 0.5) * this.shakeMagnitude;
