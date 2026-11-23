@@ -8,11 +8,20 @@ export interface Vec3 {
   z: number;
 }
 
+/**
+ * Short-lived record of the player's strongest recent sideways swipe (curve "coyote time").
+ */
+export interface SwipeMemory {
+  velX: number; // m/s, signed lateral velocity of the remembered swipe
+  age: number; // real seconds since that swipe was recorded
+}
+
 export interface PaddleState {
   pos: Vec3;
   prevPos: Vec3;
   vel: Vec3; // m/s smoothed
   smashCharge: number; // 0..1
+  swipeMemory?: SwipeMemory; // player paddles only; lets a just-finished swipe still curve the ball
 }
 
 export interface BallState {
@@ -198,6 +207,64 @@ export function predictBallAtZ(ball: BallState, targetZ: number): {
   }
 
   return { willReach: false, time: 0, x: px, y: py };
+}
+
+/**
+ * Curve coyote time. Curve is decided by the paddle's sideways speed on the frame of contact,
+ * and that reading collapses within a frame or two of the hand stopping. Remembering the swipe
+ * briefly means contact that lands just after the swipe ends still curves.
+ *
+ * A remembered swipe counts at full strength for CURVE_COYOTE_HOLD_S, then fades linearly to
+ * nothing at CURVE_COYOTE_WINDOW_S. Times are real seconds (not slowed by Slow-Mo), because the
+ * window is about the player's hand, not the ball.
+ */
+export const CURVE_COYOTE_HOLD_S = 0.05;
+export const CURVE_COYOTE_WINDOW_S = 0.13;
+
+export function createSwipeMemory(): SwipeMemory {
+  return { velX: 0, age: 0 };
+}
+
+/** How much of a remembered swipe still counts (1 = all of it, 0 = expired). */
+export function swipeMemoryWeight(age: number): number {
+  if (!Number.isFinite(age) || age < 0 || age >= CURVE_COYOTE_WINDOW_S) return 0;
+  if (age <= CURVE_COYOTE_HOLD_S) return 1;
+  return 1 - (age - CURVE_COYOTE_HOLD_S) / (CURVE_COYOTE_WINDOW_S - CURVE_COYOTE_HOLD_S);
+}
+
+/** Forgets any remembered swipe. */
+export function clearSwipeMemory(memory: SwipeMemory): void {
+  memory.velX = 0;
+  memory.age = 0;
+}
+
+/** Signed sideways velocity the memory still vouches for, already faded by its age. */
+export function rememberedSwipeVelX(memory: SwipeMemory): number {
+  return memory.velX * swipeMemoryWeight(memory.age);
+}
+
+/**
+ * Ages the memory by `dt` real seconds, then records `currentVelX` if it is at least as strong
+ * as whatever is still remembered. Call once per frame with the paddle's live sideways velocity.
+ */
+export function updateSwipeMemory(memory: SwipeMemory, currentVelX: number, dt: number): void {
+  if (Number.isFinite(dt) && dt > 0) memory.age += dt;
+  if (!Number.isFinite(currentVelX)) return;
+  if (Math.abs(currentVelX) >= Math.abs(rememberedSwipeVelX(memory))) {
+    memory.velX = currentVelX;
+    memory.age = 0;
+  }
+}
+
+/**
+ * Sideways swing used for curve spin at contact: the live velocity, unless a recent swipe that
+ * is still remembered is stronger. Result is clamped to the same range as a live swing.
+ */
+export function resolveCurveSwingVelX(currentVelX: number, memory?: SwipeMemory): number {
+  const live = clamp(currentVelX, -7, 7);
+  if (!memory) return live;
+  const remembered = clamp(rememberedSwipeVelX(memory), -7, 7);
+  return Math.abs(remembered) > Math.abs(live) ? remembered : live;
 }
 
 export interface AutoSlowMoInput {
@@ -607,7 +674,10 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
           0.74
         );
 
-        const spinY = clamp(swingHoriz * 5.8, -32, 32);
+        // Curve coyote time: spin may come from a swipe that ended a moment before contact.
+        // Aim (targetX above) deliberately keeps using the live swing so placement stays predictable.
+        const curveSwing = resolveCurveSwingVelX(paddleVel.x, activePaddle.swipeMemory);
+        const spinY = clamp(curveSwing * 5.8, -32, 32);
         const spinX = clamp((isSmash ? 24 : 12) + Math.max(0, paddleVel.y) * 5, -14, 34);
         const isCurve = Math.abs(spinY) >= 12;
 

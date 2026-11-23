@@ -5,13 +5,22 @@ import path from 'node:path';
 import * as THREE from 'three';
 import {
   checkSweptPaddleHit,
+  clearSwipeMemory,
   computeEdgeJumpTargetX,
   createBallState,
+  createSwipeMemory,
+  CURVE_COYOTE_HOLD_S,
+  CURVE_COYOTE_WINDOW_S,
   evaluateAutoSlowMo,
   predictBallAtZ,
+  rememberedSwipeVelX,
+  resolveCurveSwingVelX,
   solveBallisticShot,
   stepPhysics,
+  swipeMemoryWeight,
+  updateSwipeMemory,
   type PaddleState,
+  type SwipeMemory,
 } from '../src/game/physics';
 import { computeGhostPaddleOpacity, projectNdcToZPlane } from '../src/game/sceneManager';
 import { computeFloatingPopupOrigin } from '../src/game/visualEffects';
@@ -479,6 +488,197 @@ describe('3D Table Tennis Physics Engine', () => {
     const playerHit = evs.find((e) => e.type === 'paddle_hit' && e.by === 'player');
     expect(playerHit).toBeDefined();
     expect(ball.vel.z).toBeLessThan(0); // returned cleanly back toward Robot!
+  });
+});
+
+describe('Curve Coyote Time', () => {
+  const FRAME = 1 / 60;
+  // Sideways paddle speed at which a hit starts counting as a curve shot (|spinY| >= 12, spinY = v * 5.8)
+  const CURVE_MIN_SWING = 12 / 5.8;
+
+  /** A ball flying straight into a paddle, then followed to its first bounce. */
+  function strike(paddle: PaddleState) {
+    const ball = createBallState();
+    ball.pos = { x: 0, y: 1.05, z: PLAYER_PADDLE.BASE_Z - 0.08 };
+    ball.vel = { x: 0, y: 0.2, z: 6.5 };
+    ball.active = true;
+    ball.lastHitBy = 'robot';
+    const robotPaddle = makePaddle(-0.95, 1.0, ROBOT.PADDLE_BASE_Z); // out of the way
+
+    const first = stepPhysics(ball, FRAME, { playerPaddle: paddle, robotPaddle });
+    const hit = first.find((e) => e.type === 'paddle_hit' && e.by === 'player');
+    if (!hit || hit.type !== 'paddle_hit') throw new Error('expected the player paddle to strike the ball');
+
+    // null when the shot never touches the table (e.g. a deliberate overswing that sails wide)
+    let landing: { side: string; x: number; z: number } | null = null;
+    for (let i = 0; i < 240 && !landing; i++) {
+      for (const e of stepPhysics(ball, FRAME, { playerPaddle: paddle, robotPaddle })) {
+        if (e.type === 'table_bounce' && !landing) landing = { side: e.side, x: e.pos.x, z: e.pos.z };
+      }
+    }
+    return { hit, landing };
+  }
+
+  function strikeAndLand(paddle: PaddleState) {
+    const res = strike(paddle);
+    if (!res.landing) throw new Error('expected the returned ball to bounce on the table');
+    return { hit: res.hit, landing: res.landing };
+  }
+
+  function stillPaddle(memory?: SwipeMemory, liveVelX = 0): PaddleState {
+    const paddle = makePaddle(0, 1.05, PLAYER_PADDLE.BASE_Z);
+    paddle.vel.x = liveVelX;
+    if (memory) paddle.swipeMemory = memory;
+    return paddle;
+  }
+
+  it('remembers a swipe at full strength briefly, then fades it out completely', () => {
+    expect(swipeMemoryWeight(0)).toBe(1);
+    expect(swipeMemoryWeight(CURVE_COYOTE_HOLD_S)).toBe(1);
+    expect(swipeMemoryWeight(CURVE_COYOTE_WINDOW_S)).toBe(0);
+    expect(swipeMemoryWeight(1)).toBe(0);
+
+    // Strictly decreasing between hold and window
+    let prev = 1;
+    for (let age = CURVE_COYOTE_HOLD_S + 0.005; age < CURVE_COYOTE_WINDOW_S; age += 0.005) {
+      const w = swipeMemoryWeight(age);
+      expect(w).toBeGreaterThan(0);
+      expect(w).toBeLessThan(prev);
+      prev = w;
+    }
+
+    // The window is deliberately small: a grace period, not an aim assist
+    expect(CURVE_COYOTE_WINDOW_S).toBeLessThanOrEqual(0.15);
+
+    // Nonsense ages never count
+    expect(swipeMemoryWeight(-0.01)).toBe(0);
+    expect(swipeMemoryWeight(Number.NaN)).toBe(0);
+    expect(swipeMemoryWeight(Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it('keeps the strongest recent swipe, lets a stronger one replace it, and forgets it after the window', () => {
+    const mem = createSwipeMemory();
+    expect(rememberedSwipeVelX(mem)).toBe(0);
+
+    updateSwipeMemory(mem, 5, FRAME);
+    expect(mem).toEqual({ velX: 5, age: 0 });
+
+    // Hand stops: weaker live readings do not overwrite the remembered swipe, they only age it
+    updateSwipeMemory(mem, 2.25, FRAME);
+    updateSwipeMemory(mem, 1.0, FRAME);
+    expect(mem.velX).toBe(5);
+    expect(mem.age).toBeCloseTo(2 * FRAME, 6);
+    expect(rememberedSwipeVelX(mem)).toBe(5);
+
+    // A stronger swipe the other way takes over immediately
+    updateSwipeMemory(mem, -6, FRAME);
+    expect(mem).toEqual({ velX: -6, age: 0 });
+
+    // Left alone, it expires and the memory falls back to the (tiny) live reading
+    for (let t = 0; t < CURVE_COYOTE_WINDOW_S + 0.05; t += FRAME) updateSwipeMemory(mem, 0.1, FRAME);
+    expect(rememberedSwipeVelX(mem)).toBeCloseTo(0.1, 6);
+
+    // Bad inputs never corrupt the memory
+    const safe = createSwipeMemory();
+    updateSwipeMemory(safe, 4, FRAME);
+    updateSwipeMemory(safe, 1, Number.NaN); // unusable dt: no ageing, weaker reading ignored
+    updateSwipeMemory(safe, 1, -5);
+    updateSwipeMemory(safe, 1, 0);
+    expect(safe).toEqual({ velX: 4, age: 0 });
+    updateSwipeMemory(safe, Number.NaN, FRAME); // unusable velocity: time still passes, swipe is kept
+    expect(safe.velX).toBe(4);
+    expect(safe.age).toBeCloseTo(FRAME, 6);
+    expect(Number.isFinite(rememberedSwipeVelX(safe))).toBe(true);
+
+    clearSwipeMemory(safe);
+    expect(safe).toEqual({ velX: 0, age: 0 });
+  });
+
+  it('extends the curve window from about one frame to a few frames after a swipe ends', () => {
+    // The engine smooths paddle velocity, so once the hand stops the live reading collapses by x0.45 per frame
+    const framesStillCurving = (swipe: number, withMemory: boolean): number => {
+      const mem = createSwipeMemory();
+      let live = swipe;
+      updateSwipeMemory(mem, live, FRAME);
+      let frames = 0;
+      for (let i = 0; i < 30; i++) {
+        live *= 0.45;
+        updateSwipeMemory(mem, live, FRAME);
+        const swing = resolveCurveSwingVelX(live, withMemory ? mem : undefined);
+        if (Math.abs(swing) < CURVE_MIN_SWING) break;
+        frames++;
+      }
+      return frames;
+    };
+
+    for (const swipe of [3, 4, 5.5, 7]) {
+      const before = framesStillCurving(swipe, false);
+      const after = framesStillCurving(swipe, true);
+      expect(before).toBeLessThanOrEqual(1);
+      expect(after).toBeGreaterThanOrEqual(3);
+      // Subtle: never more than the window allows (0.13 s is under 8 frames at 60 fps)
+      expect(after * FRAME).toBeLessThan(CURVE_COYOTE_WINDOW_S);
+    }
+    // A stronger swipe earns a little more grace than a weak one, never less
+    expect(framesStillCurving(7, true)).toBeGreaterThanOrEqual(framesStillCurving(3, true));
+  });
+
+  it('curves the ball when contact lands just after the swipe, and not once the window has passed', () => {
+    const none = strike(stillPaddle());
+    expect(none.hit.curve).toBe(false);
+    expect(none.hit.spinY).toBeCloseTo(0, 6);
+
+    // Swipe ended 30 ms ago: full-strength curve even though the paddle is no longer moving
+    const fresh = strike(stillPaddle({ velX: 5, age: 0.03 }));
+    expect(fresh.hit.curve).toBe(true);
+    expect(fresh.hit.spinY).toBeCloseTo(29, 4);
+
+    // Mirrored for a swipe the other way
+    const freshLeft = strike(stillPaddle({ velX: -5, age: 0.03 }));
+    expect(freshLeft.hit.curve).toBe(true);
+    expect(freshLeft.hit.spinY).toBeCloseTo(-29, 4);
+
+    // 90 ms ago: still a curve, but weaker
+    const fading = strike(stillPaddle({ velX: 5, age: 0.09 }));
+    expect(fading.hit.curve).toBe(true);
+    expect(Math.abs(fading.hit.spinY)).toBeLessThan(Math.abs(fresh.hit.spinY));
+    expect(Math.abs(fading.hit.spinY)).toBeGreaterThanOrEqual(12);
+
+    // 200 ms ago: too late, no curve
+    const stale = strike(stillPaddle({ velX: 5, age: 0.2 }));
+    expect(stale.hit.curve).toBe(false);
+    expect(stale.hit.spinY).toBeCloseTo(0, 6);
+  });
+
+  it('never weakens or overrides a live swipe, and leaves paddles without a memory unchanged', () => {
+    // A live swipe stronger than the remembered one wins
+    expect(strike(stillPaddle({ velX: 3, age: 0.02 }, 6)).hit.spinY).toBeCloseTo(32, 4);
+
+    // A remembered swipe beats a small live wobble in the opposite direction
+    expect(strike(stillPaddle({ velX: 5, age: 0.02 }, -0.4)).hit.spinY).toBeCloseTo(29, 4);
+
+    // Paddles with no memory behave exactly as before
+    expect(strike(stillPaddle(undefined, 3)).hit.spinY).toBeCloseTo(3 * 5.8, 4);
+    expect(resolveCurveSwingVelX(3)).toBe(3);
+    expect(resolveCurveSwingVelX(99)).toBe(7);
+    expect(resolveCurveSwingVelX(0, { velX: 99, age: 0 })).toBe(7);
+    expect(resolveCurveSwingVelX(0, { velX: -99, age: 0 })).toBe(-7);
+  });
+
+  it('only adds curve: a remembered swipe does not move where the shot lands or push it off the table', () => {
+    const baseline = strikeAndLand(stillPaddle());
+    expect(baseline.landing.side).toBe('robot');
+
+    for (const velX of [-7, -5, -2.5, 2.5, 5, 7]) {
+      for (const age of [0, 0.03, 0.05, 0.08, 0.11]) {
+        const res = strikeAndLand(stillPaddle({ velX, age }));
+        expect(res.landing.side).toBe('robot');
+        expect(Math.abs(res.landing.x)).toBeLessThanOrEqual(TABLE.HALF_WIDTH);
+        // Same aim as the no-swipe shot, give or take the solver's curve approximation
+        expect(Math.abs(res.landing.x - baseline.landing.x)).toBeLessThan(0.2);
+        expect(Math.abs(res.landing.z - baseline.landing.z)).toBeLessThan(0.2);
+      }
+    }
   });
 });
 

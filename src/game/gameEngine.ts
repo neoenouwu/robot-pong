@@ -13,11 +13,14 @@ import {
 import { SoundEngine } from './audio';
 import {
   clamp,
+  clearSwipeMemory,
   computeEdgeJumpTargetX,
   createBallState,
+  createSwipeMemory,
   evaluateAutoSlowMo,
   solveBallisticShot,
   stepPhysics,
+  updateSwipeMemory,
   type BallState,
   type PaddleState,
   type Side,
@@ -107,11 +110,15 @@ export class GameEngine {
   private onStage2Unlocked?: () => void;
 
   private ball: BallState = createBallState();
+  // Curve coyote time: each player hitbox remembers its own recent sideways swipe
+  private readonly playerSwipeMemory = createSwipeMemory();
+  private readonly ghostSwipeMemory = createSwipeMemory();
   private playerPaddle: PaddleState = {
     pos: { x: 0, y: TABLE.SURFACE_Y + 0.28, z: PLAYER_PADDLE.BASE_Z },
     prevPos: { x: 0, y: TABLE.SURFACE_Y + 0.28, z: PLAYER_PADDLE.BASE_Z },
     vel: { x: 0, y: 0, z: 0 },
     smashCharge: 0,
+    swipeMemory: this.playerSwipeMemory,
   };
   // Invisible second hitbox locked right to the player's true cursor position during rapid desyncs/edge-jumps
   private ghostCursorPaddle: PaddleState = {
@@ -119,6 +126,7 @@ export class GameEngine {
     prevPos: { x: 0, y: TABLE.SURFACE_Y + 0.28, z: PLAYER_PADDLE.BASE_Z },
     vel: { x: 0, y: 0, z: 0 },
     smashCharge: 0,
+    swipeMemory: this.ghostSwipeMemory,
   };
 
   // Input state
@@ -934,6 +942,7 @@ export class GameEngine {
       this.ghostCursorPaddle.vel.x = this.ghostCursorPaddle.vel.x * 0.45 + gvx * 0.55;
       this.ghostCursorPaddle.vel.y = this.ghostCursorPaddle.vel.y * 0.45 + gvy * 0.55;
       this.ghostCursorPaddle.vel.z = this.ghostCursorPaddle.vel.z * 0.45 + gvz * 0.55;
+      updateSwipeMemory(this.ghostSwipeMemory, this.ghostCursorPaddle.vel.x, dt);
     }
 
     // Edge-reach horizontal auto-jump: when near screen edge + vertically aligned, jump to catch wide/off-screen balls
@@ -981,6 +990,13 @@ export class GameEngine {
       this.playerPaddle.vel.x = this.playerPaddle.vel.x * 0.45 + effectiveVx * 0.55;
       this.playerPaddle.vel.y = this.playerPaddle.vel.y * 0.45 + rawVy * 0.55;
       this.playerPaddle.vel.z = this.playerPaddle.vel.z * 0.45 + rawVz * 0.55;
+      // An edge auto-jump is the game moving the paddle, not a swipe: rescue shots keep their
+      // existing behaviour, so nothing is remembered (or carried in) while one is active.
+      if (edgeJumping) {
+        clearSwipeMemory(this.playerSwipeMemory);
+      } else {
+        updateSwipeMemory(this.playerSwipeMemory, this.playerPaddle.vel.x, dt);
+      }
     }
 
     this.playerPaddle.pos.x = nextX;
