@@ -30,12 +30,6 @@ export type GamePhaseState =
   | 'PAUSED'
   | 'GAME_OVER';
 
-export interface CalloutMessage {
-  id: number;
-  text: string;
-  tone: 'emerald' | 'gold' | 'crimson' | 'cyan';
-}
-
 export interface HudSnapshot {
   state: GamePhaseState;
   mode: GameMode;
@@ -60,7 +54,6 @@ export interface HudSnapshot {
   smashWarning: boolean;
   muted: boolean;
   oneToOneMode: boolean;
-  callout: CalloutMessage | null;
 }
 
 export class GameEngine {
@@ -111,9 +104,6 @@ export class GameEngine {
   private pointPauseTimer = 0;
   private serveAutoTimer = 0;
   private bonusCooldown = 5.5;
-  private calloutId = 0;
-  private callout: CalloutMessage | null = null;
-  private calloutExpiry = 0;
 
   private rafId = 0;
   private lastFrameTime = 0;
@@ -165,6 +155,7 @@ export class GameEngine {
     this.ball.active = false;
     this.ball.pos = { x: 0, y: TABLE.SURFACE_Y + 0.38, z: -0.25 };
     this.sceneManager.vfx.clearTrail();
+    this.sceneManager.vfx.clearFloatingPoints();
     this.sceneManager.vfx.hideBonusRing();
     this.pushHud(true);
   }
@@ -206,11 +197,8 @@ export class GameEngine {
     this.bonusCooldown = 4.5;
     this.sceneManager.vfx.hideBonusRing();
     this.sceneManager.vfx.clearTrail();
+    this.sceneManager.vfx.clearFloatingPoints();
     this.enterServeState();
-    this.showCallout(
-      mode === 'arcade' ? 'OVERDRIVE ENGAGED // CLICK TO SERVE' : `BOSS DUEL (${difficulty.toUpperCase()}) // SERVE`,
-      'emerald'
-    );
     this.pushHud(true);
   }
 
@@ -248,19 +236,16 @@ export class GameEngine {
     this.sensitivity = clamp(val, 0.6, 1.8);
   }
 
-  public setOneToOneMode(enabled: boolean, announce = true): void {
+  public setOneToOneMode(enabled: boolean): void {
     this.oneToOneMode = enabled;
     if (!enabled) {
       this.autoBulletTimeLatched = false;
-    }
-    if (announce && (this.state === 'RALLY' || this.state === 'SERVE')) {
-      this.showCallout(enabled ? '1:1 + AUTO FOCUS ON' : 'ASSISTED TRACKING ON', 'cyan');
     }
     this.pushHud(true);
   }
 
   public toggleOneToOneMode(): boolean {
-    this.setOneToOneMode(!this.oneToOneMode, true);
+    this.setOneToOneMode(!this.oneToOneMode);
     return this.oneToOneMode;
   }
 
@@ -275,7 +260,6 @@ export class GameEngine {
     const p = getThreatPhaseForScore(this.score);
     if (p.phase > this.maxPhaseReached) {
       this.maxPhaseReached = p.phase;
-      this.showCallout(`THREAT LEVEL ${p.phase}: ${p.name}`, 'crimson');
       this.audio.playSmashWarning();
       this.sceneManager.addCameraShake(0.05);
     }
@@ -371,12 +355,6 @@ export class GameEngine {
     this.pushHud(true);
   }
 
-  private showCallout(text: string, tone: CalloutMessage['tone']): void {
-    this.calloutId += 1;
-    this.callout = { id: this.calloutId, text, tone };
-    this.calloutExpiry = performance.now() + 1350;
-  }
-
   private setBulletTime(active: boolean): void {
     if (this.bulletTimeActive === active) return;
     this.bulletTimeActive = active;
@@ -385,11 +363,6 @@ export class GameEngine {
 
   private step(realDt: number, nowMs: number): void {
     const phase = this.getCurrentThreatPhase();
-
-    // Update callout expiration
-    if (this.callout && nowMs > this.calloutExpiry) {
-      this.callout = null;
-    }
 
     // Unlimited Bullet Time management (manual RMB/Shift OR automatic near-miss reflex in 1:1 mode)
     if (this.state === 'RALLY') {
@@ -400,9 +373,6 @@ export class GameEngine {
         alreadyLatched: this.autoBulletTimeLatched,
       });
       this.autoBulletTimeLatched = autoCheck.active;
-      if (autoCheck.newlyTriggered && !this.bulletTimeActive) {
-        this.showCallout('AUTO FOCUS // SAVE IT!', 'cyan');
-      }
     } else {
       this.autoBulletTimeLatched = false;
     }
@@ -452,9 +422,12 @@ export class GameEngine {
         if (this.sceneManager.vfx.checkBonusRingHit(this.ball)) {
           const bonusPts = 500 * this.getComboMultiplier();
           this.score += bonusPts;
-          this.focus = Math.min(100, this.focus + 32);
           this.audio.playBonusRing();
-          this.showCallout(`DATA RING +${bonusPts}`, 'emerald');
+          this.sceneManager.vfx.spawnFloatingPoints(
+            this.sceneManager.vfx.getBonusRingPosition(),
+            `+${bonusPts}`,
+            { subText: 'RING', tone: 'emerald', side: 'world' }
+          );
         }
       }
 
@@ -474,9 +447,6 @@ export class GameEngine {
           } else if (ev.type === 'net_hit') {
             this.audio.playNetHit();
             this.sceneManager.vfx.emitSparks(ev.pos, 0xffe49a, 10, 0.7);
-            if (ev.cleared) {
-              this.showCallout('NET CORD!', 'gold');
-            }
           } else if (ev.type === 'paddle_hit') {
             this.audio.playPaddleHit(ev);
             if (ev.by === 'player') {
@@ -487,40 +457,47 @@ export class GameEngine {
               const mult = this.getComboMultiplier();
               let gained = 100 * mult;
               let sparkColor = 0x3dff9e;
+              let subTag: string | undefined;
+              let popupTone: 'mint' | 'emerald' | 'gold' | 'cyan' = 'mint';
 
               if (ev.counterSmash) {
                 gained += 550 * mult;
-                this.focus = Math.min(100, this.focus + 28);
                 sparkColor = 0xffe45e;
+                subTag = 'COUNTER';
+                popupTone = 'gold';
                 this.sceneManager.addCameraShake(0.085);
-                this.showCallout(`CRIMSON COUNTER! +${gained}`, 'gold');
               } else if (ev.perfect) {
                 this.perfectHits += 1;
                 gained += 120 * mult;
-                this.focus = Math.min(100, this.focus + 16);
                 sparkColor = 0x55ffaa;
+                subTag = ev.smash ? 'PERFECT SMASH' : 'PERFECT';
+                popupTone = ev.smash ? 'gold' : 'emerald';
                 this.sceneManager.addCameraShake(ev.smash ? 0.055 : 0.025);
-                this.showCallout(
-                  ev.smash ? `PERFECT SMASH! +${gained}` : `PERFECT! +${gained}`,
-                  ev.smash ? 'gold' : 'emerald'
-                );
               } else if (ev.curve) {
                 gained += 80 * mult;
-                this.focus = Math.min(100, this.focus + 10);
                 sparkColor = 0x1affd5;
-                this.showCallout(`MATRIX CURVE +${gained}`, 'cyan');
+                subTag = 'CURVE';
+                popupTone = 'cyan';
               } else if (ev.smash) {
                 gained += 90 * mult;
-                this.focus = Math.min(100, this.focus + 12);
                 sparkColor = 0xffdd66;
+                subTag = 'SMASH';
+                popupTone = 'gold';
                 this.sceneManager.addCameraShake(0.04);
-                this.showCallout(`POWER SMASH +${gained}`, 'gold');
-              } else {
-                this.focus = Math.min(100, this.focus + 7);
               }
 
               this.score += gained;
-              this.sceneManager.vfx.emitSparks(ev.pos, sparkColor, ev.smash ? 24 : 14, ev.smash ? 1.4 : 0.9);
+              this.sceneManager.vfx.emitSparks(
+                ev.pos,
+                sparkColor,
+                ev.smash ? 24 : 14,
+                ev.smash ? 1.4 : 0.9
+              );
+              this.sceneManager.vfx.spawnFloatingPoints(this.playerPaddle.pos, `+${gained}`, {
+                subText: subTag,
+                tone: popupTone,
+                side: 'player',
+              });
             } else {
               // Sentinel returned the ball
               this.sceneManager.vfx.emitSparks(
@@ -531,7 +508,6 @@ export class GameEngine {
               );
               if (ev.smash) {
                 this.sceneManager.addCameraShake(0.06);
-                this.showCallout('CRIMSON SMASH INCOMING!', 'crimson');
               }
             }
           } else if (ev.type === 'point_end') {
@@ -595,20 +571,28 @@ export class GameEngine {
       this.sceneManager.addCameraShake(0.07);
       const killBonus = 750 * this.getComboMultiplier();
       this.score += killBonus;
-      this.focus = Math.min(100, this.focus + 22);
-      this.showCallout(`SENTINEL BREACHED! +${killBonus}`, 'emerald');
+      const sentinelPos = this.sceneManager.sentinelController?.paddleState.pos ?? {
+        x: 0,
+        y: TABLE.SURFACE_Y + 0.35,
+        z: SENTINEL.PADDLE_BASE_Z,
+      };
+      this.sceneManager.vfx.spawnFloatingPoints(sentinelPos, `+${killBonus}`, {
+        subText: 'WINNER',
+        tone: 'emerald',
+        side: 'sentinel',
+        duration: 1.05,
+      });
     } else {
       this.sentinelPoints += 1;
       this.sceneManager.addCameraShake(0.055);
       if (this.mode === 'arcade') {
         this.shields = Math.max(0, this.shields - 1);
-        this.showCallout(
-          this.shields > 0 ? `SHIELD HIT (${this.shields} LEFT)` : 'SYSTEM BREACH // GAME OVER',
-          'crimson'
-        );
-      } else {
-        this.showCallout(`SENTINEL POINT (${this.lastPointReason})`, 'crimson');
       }
+      this.sceneManager.vfx.spawnFloatingPoints(
+        this.playerPaddle.pos,
+        this.mode === 'arcade' ? '-1 SHIELD' : 'SENTINEL PT',
+        { tone: 'crimson', side: 'player', duration: 0.9 }
+      );
     }
 
     // Check game-over condition
@@ -861,7 +845,6 @@ export class GameEngine {
       smashWarning,
       muted: this.audio.isMuted(),
       oneToOneMode: this.oneToOneMode,
-      callout: this.callout,
     });
   }
 

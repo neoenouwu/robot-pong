@@ -13,6 +13,7 @@ import {
   type PaddleState,
 } from '../src/game/physics';
 import { projectNdcToZPlane } from '../src/game/sceneManager';
+import { computeFloatingPopupOrigin } from '../src/game/matrixEffects';
 import { PLAYER_PADDLE, SENTINEL, TABLE } from '../src/game/constants';
 import {
   LeaderboardStore,
@@ -232,6 +233,27 @@ describe('3D Table Tennis Physics Engine', () => {
       alreadyLatched: true,
     });
     expect(passed.active).toBe(false);
+  });
+
+  it('positions 3D floating point popups outward beside paddles and staggers stacked hits', () => {
+    const rightPaddle = computeFloatingPopupOrigin(
+      { x: 0.35, y: 1.0, z: PLAYER_PADDLE.BASE_Z },
+      { side: 'player', stackIndex: 0 }
+    );
+    const stacked = computeFloatingPopupOrigin(
+      { x: 0.35, y: 1.0, z: PLAYER_PADDLE.BASE_Z },
+      { side: 'player', stackIndex: 1 }
+    );
+    const leftPaddle = computeFloatingPopupOrigin(
+      { x: -0.35, y: 1.0, z: PLAYER_PADDLE.BASE_Z },
+      { side: 'player', stackIndex: 0 }
+    );
+
+    // Nudged outward away from center sightline & above paddle
+    expect(rightPaddle.x).toBeGreaterThan(0.5);
+    expect(leftPaddle.x).toBeLessThan(-0.5);
+    expect(rightPaddle.y).toBeGreaterThan(1.1);
+    expect(stacked.y).toBeGreaterThan(rightPaddle.y);
   });
 });
 

@@ -237,6 +237,237 @@ export class SteamMistSystem {
   }
 }
 
+export type FloatingTextTone = 'mint' | 'emerald' | 'gold' | 'cyan' | 'crimson';
+
+const FLOATING_TONE_STYLES: Record<FloatingTextTone, { fill: string; glow: string; sub: string }> = {
+  mint: { fill: '#e6fff2', glow: 'rgba(120, 255, 190, 0.55)', sub: 'rgba(210, 255, 232, 0.82)' },
+  emerald: { fill: '#3bff9d', glow: 'rgba(24, 255, 136, 0.72)', sub: 'rgba(180, 255, 215, 0.9)' },
+  gold: { fill: '#ffe573', glow: 'rgba(255, 188, 52, 0.75)', sub: 'rgba(255, 236, 165, 0.92)' },
+  cyan: { fill: '#48fff0', glow: 'rgba(36, 255, 229, 0.72)', sub: 'rgba(190, 255, 248, 0.9)' },
+  crimson: { fill: '#ff667c', glow: 'rgba(255, 36, 66, 0.65)', sub: 'rgba(255, 185, 195, 0.85)' },
+};
+
+/**
+ * Computes an unobstructed 3D spawn point beside a paddle or target so floating
+ * points never overlap the ball or center sightline.
+ */
+export function computeFloatingPopupOrigin(
+  anchor: Vec3,
+  options: { side: 'player' | 'sentinel' | 'world'; stackIndex?: number }
+): Vec3 {
+  const stack = options.stackIndex ?? 0;
+  if (options.side === 'world') {
+    return {
+      x: anchor.x,
+      y: anchor.y + 0.14 + stack * 0.11,
+      z: anchor.z,
+    };
+  }
+
+  // Push gently outward away from center X so text sits beside the paddle, never over the ball
+  const outwardSign = anchor.x >= 0 ? 1 : -1;
+  const sideOffset = options.side === 'player' ? 0.21 : 0.34;
+  const x = Math.max(-1.24, Math.min(1.24, anchor.x + outwardSign * sideOffset));
+  const y = anchor.y + (options.side === 'player' ? 0.14 : 0.22) + stack * 0.11;
+  const z = anchor.z + (options.side === 'player' ? -0.05 : 0.12);
+  return { x, y, z };
+}
+
+interface FloatingSlot {
+  sprite: THREE.Sprite;
+  material: THREE.SpriteMaterial;
+  canvas: HTMLCanvasElement | null;
+  ctx: CanvasRenderingContext2D | null;
+  texture: THREE.CanvasTexture | null;
+  active: boolean;
+  age: number;
+  duration: number;
+  vel: THREE.Vector3;
+  baseScaleX: number;
+  baseScaleY: number;
+}
+
+/**
+ * Reusable fixed-pool 3D world-space floating score text sprites (zero texture leaks,
+ * borderless crisp typography floating beside paddles/targets in 3D space).
+ */
+export class FloatingTextSystem {
+  public readonly group = new THREE.Group();
+  private readonly slots: FloatingSlot[] = [];
+  private cursor = 0;
+
+  constructor(poolSize = 10) {
+    this.group.name = 'FloatingTextSystem';
+
+    for (let i = 0; i < poolSize; i++) {
+      let canvas: HTMLCanvasElement | null = null;
+      let ctx: CanvasRenderingContext2D | null = null;
+      let texture: THREE.CanvasTexture | null = null;
+
+      if (typeof document !== 'undefined') {
+        canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 96;
+        ctx = canvas.getContext('2d');
+        texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+      }
+
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: false,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.visible = false;
+      sprite.renderOrder = 25;
+      this.group.add(sprite);
+
+      this.slots.push({
+        sprite,
+        material,
+        canvas,
+        ctx,
+        texture,
+        active: false,
+        age: 0,
+        duration: 0.8,
+        vel: new THREE.Vector3(),
+        baseScaleX: 0.44,
+        baseScaleY: 0.165,
+      });
+    }
+  }
+
+  public spawn(
+    anchor: Vec3,
+    mainText: string,
+    opts: {
+      subText?: string;
+      tone?: FloatingTextTone;
+      side?: 'player' | 'sentinel' | 'world';
+      scale?: number;
+      duration?: number;
+    } = {}
+  ): void {
+    const slot = this.slots[this.cursor];
+    this.cursor = (this.cursor + 1) % this.slots.length;
+
+    const side = opts.side ?? 'player';
+    const tone = opts.tone ?? 'mint';
+    const style = FLOATING_TONE_STYLES[tone];
+
+    // Count nearby active popups so consecutive hits stagger cleanly vertically
+    let nearbyCount = 0;
+    for (const s of this.slots) {
+      if (s !== slot && s.active && s.age < 0.35) {
+        const dx = s.sprite.position.x - anchor.x;
+        const dz = s.sprite.position.z - anchor.z;
+        if (Math.hypot(dx, dz) < 0.6) nearbyCount++;
+      }
+    }
+
+    if (slot.canvas && slot.ctx && slot.texture) {
+      const w = slot.canvas.width;
+      const h = slot.canvas.height;
+      const ctx = slot.ctx;
+      ctx.clearRect(0, 0, w, h);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Crisp dark halo shadow for effortless readability without any card background
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+      ctx.shadowBlur = 9;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 2;
+
+      const hasSub = Boolean(opts.subText);
+      ctx.font = '800 36px "Cascadia Code", Consolas, ui-monospace, monospace';
+      ctx.fillStyle = style.fill;
+      ctx.fillText(mainText, w / 2, hasSub ? 36 : 48);
+
+      // Subtle glow pass
+      ctx.shadowColor = style.glow;
+      ctx.shadowBlur = 12;
+      ctx.fillText(mainText, w / 2, hasSub ? 36 : 48);
+
+      if (hasSub && opts.subText) {
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+        ctx.shadowBlur = 6;
+        ctx.font = '700 15px "Cascadia Code", Consolas, ui-monospace, monospace';
+        ctx.fillStyle = style.sub;
+        ctx.fillText(opts.subText, w / 2, 68);
+      }
+
+      slot.texture.needsUpdate = true;
+    }
+
+    const origin = computeFloatingPopupOrigin(anchor, { side, stackIndex: nearbyCount });
+    slot.sprite.position.set(origin.x, origin.y, origin.z);
+
+    // Distance-balanced world scale: subtle near player paddle, legible near Sentinel far court
+    const defaultScale = side === 'player' ? 0.36 : side === 'world' ? 0.56 : 0.68;
+    const sc = opts.scale ?? defaultScale;
+    slot.baseScaleX = sc;
+    slot.baseScaleY = sc * (96 / 256);
+
+    const driftOut = origin.x >= 0 ? 0.08 : -0.08;
+    slot.vel.set(driftOut, side === 'player' ? 0.28 : 0.42, 0);
+    slot.age = 0;
+    slot.duration = opts.duration ?? 0.82;
+    slot.active = true;
+    slot.sprite.visible = true;
+    slot.material.opacity = 0.01;
+  }
+
+  public clear(): void {
+    for (const s of this.slots) {
+      s.active = false;
+      s.sprite.visible = false;
+      s.material.opacity = 0;
+    }
+  }
+
+  public update(realDt: number): void {
+    for (const s of this.slots) {
+      if (!s.active) continue;
+      s.age += realDt;
+      const p = s.age / s.duration;
+      if (p >= 1) {
+        s.active = false;
+        s.sprite.visible = false;
+        s.material.opacity = 0;
+        continue;
+      }
+
+      // Gentle upward float with soft deceleration
+      const decel = 1 - p * 0.55;
+      s.sprite.position.x += s.vel.x * decel * realDt;
+      s.sprite.position.y += s.vel.y * decel * realDt;
+
+      // Crisp fade-in (first 12%), subtle hold, smooth fade-out (last 45%)
+      const fadeIn = Math.min(1, p / 0.12);
+      const fadeOut = p > 0.52 ? 1 - (p - 0.52) / 0.48 : 1;
+      s.material.opacity = Math.max(0, Math.min(0.92, fadeIn * fadeOut * 0.92));
+
+      // Gentle pop-in scale
+      const pop = 0.86 + Math.min(1, p / 0.16) * 0.16;
+      s.sprite.scale.set(s.baseScaleX * pop, s.baseScaleY * pop, 1);
+    }
+  }
+
+  public dispose(): void {
+    for (const s of this.slots) {
+      s.texture?.dispose();
+      s.material.dispose();
+    }
+  }
+}
+
 /**
  * Dynamic gameplay visual telemetry:
  * - Ball energy ribbon trail
@@ -244,9 +475,11 @@ export class SteamMistSystem {
  * - Spark particle burst pool
  * - Sentinel crimson smash lock-on laser beam
  * - Floating Matrix bonus ring target
+ * - Subtle 3D floating point popups
  */
 export class GameplayVFX {
   public readonly group = new THREE.Group();
+  public readonly floatingText = new FloatingTextSystem(10);
 
   // Trail
   private readonly trailMax = 28;
@@ -401,6 +634,31 @@ export class GameplayVFX {
     this.bonusRingGroup.add(outerTorus, innerTorus);
     this.bonusRingGroup.visible = false;
     this.group.add(this.bonusRingGroup);
+
+    // 8. 3D floating point popups beside paddles & rings
+    this.group.add(this.floatingText.group);
+  }
+
+  public spawnFloatingPoints(
+    anchor: Vec3,
+    mainText: string,
+    opts?: {
+      subText?: string;
+      tone?: FloatingTextTone;
+      side?: 'player' | 'sentinel' | 'world';
+      scale?: number;
+      duration?: number;
+    }
+  ): void {
+    this.floatingText.spawn(anchor, mainText, opts);
+  }
+
+  public clearFloatingPoints(): void {
+    this.floatingText.clear();
+  }
+
+  public getBonusRingPosition(): Vec3 {
+    return { x: this.bonusPos.x, y: this.bonusPos.y, z: this.bonusPos.z };
   }
 
   public clearTrail(): void {
@@ -467,10 +725,12 @@ export class GameplayVFX {
 
   public update(
     dt: number,
+    realDt: number,
     ball: BallState,
     eyeWorldPos: THREE.Vector3,
     smashTelegraph: number
   ): void {
+    this.floatingText.update(realDt);
     // 1. Update ball trail
     if (ball.active) {
       this.trailPoints.push(new THREE.Vector3(ball.pos.x, ball.pos.y, ball.pos.z));

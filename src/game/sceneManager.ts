@@ -457,6 +457,7 @@ export class SceneManager {
       this.sentinelController.getMainEyeWorldPosition(this.eyeWorldScratch);
       this.vfx.update(
         dt,
+        realDt,
         ball,
         this.eyeWorldScratch,
         this.sentinelController.getSmashTelegraph()
@@ -513,6 +514,7 @@ export class SceneManager {
 
   public dispose(): void {
     window.removeEventListener('resize', this.boundResize);
+    this.vfx.floatingText.dispose();
     this.renderer.dispose();
   }
 }

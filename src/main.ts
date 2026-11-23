@@ -41,8 +41,9 @@ class SentinelPongApp {
   private hasSubmittedRun = false;
   private lastSubmittedId: string | null = null;
   private prevState: string = 'LOADING';
-  private lastCalloutId = -1;
   private lastSavedOneToOne: boolean | null = null;
+  private lastPhaseNum = 1;
+  private lastShields = 3;
 
   // DOM refs
   private readonly canvasContainer = byId<HTMLDivElement>('canvas-container');
@@ -73,7 +74,6 @@ class SentinelPongApp {
   private readonly hudSPts = byId<HTMLElement>('hud-s-pts');
   private readonly hudFocusBar = byId<HTMLDivElement>('hud-focus-bar');
   private readonly hudSmashBar = byId<HTMLDivElement>('hud-smash-bar');
-  private readonly hudCallout = byId<HTMLDivElement>('hud-callout');
   private readonly hudServePrompt = byId<HTMLDivElement>('hud-serve-prompt');
   private readonly btnHudMute = byId<HTMLButtonElement>('btn-hud-mute');
   private readonly btnHudOneToOne = byId<HTMLButtonElement>('btn-hud-one-to-one');
@@ -316,21 +316,23 @@ class SentinelPongApp {
       this.hudSPts.textContent = String(snap.sentinelPoints);
     }
 
-    // Serve prompt
+    // Serve prompt (bottom edge only — zero center-screen callouts)
     const showServe = snap.state === 'SERVE' && snap.server === 'player';
     this.hudServePrompt.classList.toggle('hidden', !showServe);
 
-    // Transient callout
-    if (snap.callout) {
-      if (snap.callout.id !== this.lastCalloutId) {
-        this.lastCalloutId = snap.callout.id;
-        this.hudCallout.textContent = snap.callout.text;
-        this.hudCallout.className = `callout ${snap.callout.tone}`;
-      }
-      this.hudCallout.classList.remove('hidden');
-    } else {
-      this.hudCallout.classList.add('hidden');
+    // Subtle top-bar highlight pulse when Threat Phase advances or shield drops
+    if (snap.threatPhase.phase !== this.lastPhaseNum) {
+      this.lastPhaseNum = snap.threatPhase.phase;
+      this.hudPhaseBadge.classList.remove('hud-pulse');
+      void this.hudPhaseBadge.offsetWidth;
+      this.hudPhaseBadge.classList.add('hud-pulse');
     }
+    if (snap.shields < this.lastShields) {
+      this.hudArcadeShields.classList.remove('hud-pulse');
+      void this.hudArcadeShields.offsetWidth;
+      this.hudArcadeShields.classList.add('hud-pulse');
+    }
+    this.lastShields = snap.shields;
 
     // Populate Game Over modal once on transition
     if (isGameOver && this.prevState !== 'GAME_OVER') {

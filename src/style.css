@@ -611,39 +611,13 @@ kbd {
   box-shadow: 0 0 12px rgba(30, 255, 136, 0.28);
 }
 
-.callout {
-  align-self: center;
-  font-family: var(--font-mono);
-  font-size: clamp(16px, 2.2vw, 24px);
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  padding: 7px 18px;
-  border-radius: 99px;
-  background: rgba(3, 12, 8, 0.8);
-  border: 1px solid var(--emerald);
-  color: var(--emerald);
-  text-shadow: 0 0 14px currentColor;
-  animation: calloutPop 0.2s ease-out;
+.hud-pulse {
+  animation: hudPulse 0.45s ease-out;
 }
 
-.callout.gold {
-  border-color: var(--amber);
-  color: #ffe07d;
-}
-
-.callout.crimson {
-  border-color: var(--crimson);
-  color: #ff6278;
-}
-
-.callout.cyan {
-  border-color: var(--cyan);
-  color: var(--cyan);
-}
-
-@keyframes calloutPop {
-  from { transform: scale(0.84); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+@keyframes hudPulse {
+  0% { transform: scale(1.12); filter: brightness(1.45); }
+  100% { transform: scale(1); filter: brightness(1); }
 }
 
 .serve-prompt {
