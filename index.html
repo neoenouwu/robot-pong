@@ -51,13 +51,16 @@
           </div>
 
           <div class="hud-panel hud-center-panel">
-            <div id="hud-phase-badge" class="phase-badge">PHASE 1 // RECON</div>
-            <div id="hud-arcade-shields" class="shields-row" aria-label="Integrity Shields"></div>
-            <div id="hud-duel-score" class="duel-score hidden">
-              <span class="duel-you">YOU <strong id="hud-p-pts">0</strong></span>
-              <span class="duel-sep">:</span>
-              <span class="duel-ai"><strong id="hud-r-pts">0</strong> ROBOT</span>
+            <div id="hud-health-player" class="health-bar health-bar--player hidden" role="img" aria-label="You: 5 of 5">
+              <span class="health-name" aria-hidden="true">YOU</span>
+              <div class="health-track" aria-hidden="true"></div>
             </div>
+            <div id="hud-phase-badge" class="phase-badge">PHASE 1 // RECON</div>
+            <div id="hud-health-robot" class="health-bar health-bar--robot hidden" role="img" aria-label="Robot: 5 of 5">
+              <span class="health-name" aria-hidden="true">ROBOT</span>
+              <div class="health-track" aria-hidden="true"></div>
+            </div>
+            <div id="hud-arcade-shields" class="shields-row" aria-label="Integrity Shields"></div>
           </div>
 
           <div class="hud-actions">

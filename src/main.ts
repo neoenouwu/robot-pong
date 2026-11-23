@@ -1,5 +1,11 @@
-import type { Difficulty, GameMode, StoryStage } from './game/constants';
+import {
+  STORY_POINTS_TO_WIN,
+  type Difficulty,
+  type GameMode,
+  type StoryStage,
+} from './game/constants';
 import { GameEngine, type HudSnapshot } from './game/gameEngine';
+import { computeStoryHealthBars, type HealthBarSide } from './game/healthBars';
 import { getRobotSkin } from './game/robotSkins';
 import { SceneManager } from './game/sceneManager';
 import {
@@ -47,6 +53,8 @@ class RobotPongApp {
   private lastSavedOneToOne: boolean | null = null;
   private lastPhaseNum = 1;
   private lastShields = 3;
+  private lastStoryPoints: { player: number; robot: number } | null = null;
+  private lastHealthKey = '';
 
   // DOM refs
   private readonly canvasContainer = byId<HTMLDivElement>('canvas-container');
@@ -74,9 +82,8 @@ class RobotPongApp {
   private readonly hudBestRally = byId<HTMLElement>('hud-best-rally');
   private readonly hudPhaseBadge = byId<HTMLDivElement>('hud-phase-badge');
   private readonly hudArcadeShields = byId<HTMLDivElement>('hud-arcade-shields');
-  private readonly hudDuelScore = byId<HTMLDivElement>('hud-duel-score');
-  private readonly hudPPts = byId<HTMLElement>('hud-p-pts');
-  private readonly hudRPts = byId<HTMLElement>('hud-r-pts');
+  private readonly hudHealthPlayer = byId<HTMLDivElement>('hud-health-player');
+  private readonly hudHealthRobot = byId<HTMLDivElement>('hud-health-robot');
   private readonly hudSmashBar = byId<HTMLDivElement>('hud-smash-bar');
   private readonly hudServePrompt = byId<HTMLDivElement>('hud-serve-prompt');
   private readonly btnHudMute = byId<HTMLButtonElement>('btn-hud-mute');
@@ -108,6 +115,8 @@ class RobotPongApp {
       this.stage2Unlocked = false;
     }
     this.syncStageUnlockVisibility();
+    this.buildHealthSegments(this.hudHealthPlayer);
+    this.buildHealthSegments(this.hudHealthRobot);
     this.bindUiEvents();
     const savedName = window.localStorage.getItem(CALLSIGN_STORAGE_KEY);
     if (savedName) {
@@ -350,7 +359,7 @@ class RobotPongApp {
       this.hudPhaseBadge.textContent = `PHASE ${snap.threatPhase.phase} // ${snap.threatPhase.name}`;
       this.hudPhaseBadge.style.color = snap.threatPhase.accentHex;
       this.hudArcadeShields.classList.remove('hidden');
-      this.hudDuelScore.classList.add('hidden');
+      this.setStoryHudVisible(false);
 
       let pips = '';
       for (let i = 0; i < snap.maxShields; i++) {
@@ -364,9 +373,8 @@ class RobotPongApp {
           : `STORY MODE // ${snap.difficulty.toUpperCase()}`;
       this.hudPhaseBadge.style.color = snap.threatPhase.accentHex;
       this.hudArcadeShields.classList.add('hidden');
-      this.hudDuelScore.classList.remove('hidden');
-      this.hudPPts.textContent = String(snap.playerPoints);
-      this.hudRPts.textContent = String(snap.robotPoints);
+      this.setStoryHudVisible(true);
+      this.renderHealthBars(snap.playerPoints, snap.robotPoints);
     }
 
     // Serve prompt (bottom edge only — zero center-screen callouts)
@@ -392,6 +400,100 @@ class RobotPongApp {
       this.populateGameOver(snap);
     }
     this.prevState = snap.state;
+  }
+
+  private buildHealthSegments(bar: HTMLElement): void {
+    const track = bar.querySelector<HTMLElement>('.health-track');
+    if (!track) throw new Error('Missing .health-track in health bar');
+    track.replaceChildren();
+    for (let i = 0; i < STORY_POINTS_TO_WIN; i++) {
+      const seg = document.createElement('span');
+      seg.className = 'health-seg';
+      track.appendChild(seg);
+    }
+    // Clear one-shot reaction classes so they do not replay when the HUD is shown again.
+    // Hiding the HUD mid-animation (e.g. on the match point) cancels it instead of ending it.
+    const clearReaction = (event: AnimationEvent): void => {
+      if (event.animationName === 'healthHit') {
+        bar.classList.remove('is-hit');
+      } else if (event.animationName === 'healthDrain') {
+        (event.target as HTMLElement).classList.remove('is-draining');
+      }
+    };
+    bar.addEventListener('animationend', clearReaction);
+    bar.addEventListener('animationcancel', clearReaction);
+  }
+
+  private clearHitReactions(): void {
+    for (const bar of [this.hudHealthPlayer, this.hudHealthRobot]) {
+      bar.classList.remove('is-hit');
+      bar.querySelectorAll('.is-draining').forEach((seg) => seg.classList.remove('is-draining'));
+    }
+  }
+
+  private setStoryHudVisible(visible: boolean): void {
+    this.hudEl.classList.toggle('hud--story', visible);
+    this.hudHealthPlayer.classList.toggle('hidden', !visible);
+    this.hudHealthRobot.classList.toggle('hidden', !visible);
+    if (!visible) {
+      this.lastStoryPoints = null;
+      this.lastHealthKey = '';
+    }
+  }
+
+  private renderHealthBars(playerPoints: number, robotPoints: number): void {
+    const prev = this.lastStoryPoints;
+    this.lastStoryPoints = { player: playerPoints, robot: robotPoints };
+    // A drop in either score means a new match or stage started: no hit reaction.
+    const isReset = !prev || playerPoints < prev.player || robotPoints < prev.robot;
+    const playerHit = !isReset && robotPoints > prev.robot;
+    const robotHit = !isReset && playerPoints > prev.player;
+    if (isReset) this.clearHitReactions();
+
+    const bars = computeStoryHealthBars(playerPoints, robotPoints);
+    const key = `${bars.player.segments}${bars.player.cracked}|${bars.robot.segments}${bars.robot.cracked}`;
+    if (key === this.lastHealthKey && !playerHit && !robotHit) return;
+    this.lastHealthKey = key;
+
+    this.applyHealthBar(this.hudHealthPlayer, 'You', bars.player, playerHit);
+    this.applyHealthBar(this.hudHealthRobot, 'Robot', bars.robot, robotHit);
+  }
+
+  private applyHealthBar(
+    bar: HTMLElement,
+    label: string,
+    side: HealthBarSide,
+    hit: boolean
+  ): void {
+    const segs = bar.querySelectorAll<HTMLElement>('.health-seg');
+    segs.forEach((seg, i) => {
+      const filled = i < side.segments;
+      const wasFilled = seg.classList.contains('is-filled');
+      const wasCracked = seg.classList.contains('is-cracked');
+      const cracked = filled && side.cracked && i === side.segments - 1;
+      seg.classList.toggle('is-filled', filled);
+      seg.classList.toggle('is-cracked', cracked);
+      const justDamaged = hit && ((wasFilled && !filled) || (cracked && !wasCracked));
+      seg.classList.remove('is-draining');
+      if (justDamaged) {
+        void seg.offsetWidth;
+        seg.classList.add('is-draining');
+      }
+    });
+
+    bar.dataset.segments = String(side.segments);
+    bar.classList.toggle('is-low', side.segments === 1);
+    bar.classList.toggle('is-out', side.segments === 0);
+    bar.setAttribute(
+      'aria-label',
+      `${label}: ${side.segments} of ${STORY_POINTS_TO_WIN}${side.cracked ? ', cracked' : ''}`
+    );
+
+    if (hit) {
+      bar.classList.remove('is-hit');
+      void bar.offsetWidth;
+      bar.classList.add('is-hit');
+    }
   }
 
   private populateGameOver(snap: HudSnapshot): void {
