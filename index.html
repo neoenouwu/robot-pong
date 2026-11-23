@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SENTINEL PONG // Matrix 3D Table Tennis</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- 3D WebGL Viewport -->
+      <div id="canvas-container" aria-label="Sentinel Pong 3D Arena"></div>
+
+      <!-- Bullet-Time & Smash Warning Screen Overlays -->
+      <div id="fx-bullet-vignette" class="fx-overlay" aria-hidden="true"></div>
+      <div id="fx-smash-warning" class="fx-overlay" aria-hidden="true"></div>
+
+      <!-- Loading Overlay -->
+      <div id="screen-loading" class="modal-backdrop">
+        <div class="terminal-card loading-card">
+          <div class="eyebrow">CONSTRUCT INITIALIZATION</div>
+          <h1 class="brand-title">SENTINEL <span class="accent-red">PONG</span></h1>
+          <p id="loading-status" class="muted-copy">Loading 3D GLB models...</p>
+          <div class="progress-track">
+            <div id="loading-bar" class="progress-fill" style="width: 5%"></div>
+          </div>
+          <div id="loading-error" class="error-box hidden"></div>
+          <button id="btn-retry-load" class="btn btn-primary hidden" type="button">
+            RETRY INITIALIZATION
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Gameplay HUD -->
+      <div id="hud" class="hud hidden">
+        <div class="hud-top">
+          <div class="hud-panel hud-score-panel">
+            <div class="hud-label">SCORE</div>
+            <div class="hud-score-row">
+              <span id="hud-score" class="hud-big-num">0</span>
+              <span id="hud-combo" class="combo-badge">x1</span>
+            </div>
+            <div class="hud-sub-row">
+              <span>RALLY <strong id="hud-rally">0</strong></span>
+              <span>BEST <strong id="hud-best-rally">0</strong></span>
+            </div>
+          </div>
+
+          <div class="hud-panel hud-center-panel">
+            <div id="hud-phase-badge" class="phase-badge">PHASE 1 // RECON</div>
+            <div id="hud-arcade-shields" class="shields-row" aria-label="Integrity Shields"></div>
+            <div id="hud-duel-score" class="duel-score hidden">
+              <span class="duel-you">YOU <strong id="hud-p-pts">0</strong></span>
+              <span class="duel-sep">:</span>
+              <span class="duel-ai"><strong id="hud-s-pts">0</strong> SENTINEL</span>
+            </div>
+          </div>
+
+          <div class="hud-actions">
+            <button id="btn-hud-mute" class="icon-btn" type="button" title="Mute / Unmute (M)">
+              SFX ON
+            </button>
+            <button
+              id="btn-hud-one-to-one"
+              class="icon-btn hidden"
+              type="button"
+              title="Toggle 1:1 Cursor Tracking + Auto Bullet Time on Near Misses (C)"
+              aria-pressed="true"
+              hidden
+            >
+              1:1 ON
+            </button>
+            <button id="btn-hud-bloom" class="icon-btn" type="button" title="Toggle Neon Bloom">
+              BLOOM ON
+            </button>
+            <button id="btn-hud-pause" class="icon-btn" type="button" title="Pause (Esc)">
+              PAUSE
+            </button>
+          </div>
+        </div>
+
+        <!-- Dynamic Center Callout / Serve Prompt -->
+        <div id="hud-callout" class="callout hidden"></div>
+        <div id="hud-serve-prompt" class="serve-prompt hidden">
+          CLICK OR PRESS <kbd>SPACE</kbd> TO SERVE
+        </div>
+
+        <div class="hud-bottom">
+          <div class="hud-panel hud-meter-panel">
+            <div class="meter-header hidden" hidden>
+              <span>BULLET TIME FOCUS</span>
+              <span class="meter-key"><kbd>RMB</kbd> / <kbd>SHIFT</kbd></span>
+            </div>
+            <div class="meter-track hidden" hidden>
+              <div id="hud-focus-bar" class="meter-fill focus-fill" style="width: 100%"></div>
+            </div>
+            <div class="meter-header">
+              <span>SMASH CHARGE</span>
+              <span class="meter-key"><kbd>HOLD LMB</kbd> / <kbd>SPACE</kbd></span>
+            </div>
+            <div class="meter-track">
+              <div id="hud-smash-bar" class="meter-fill smash-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="hud-tip-pill">
+            SWIPE FAST TO CURVE &bull; HIT GREEN DATA RINGS FOR +500
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Menu Overlay (leaves center 3D Sentinel showcase visible!) -->
+      <div id="screen-menu" class="menu-overlay hidden">
+        <div class="menu-grid">
+          <section class="terminal-card menu-left">
+            <div class="eyebrow">MATRIX CONSTRUCT // 3D GLB ARENA</div>
+            <h1 class="brand-title">SENTINEL <span class="accent-red">PONG</span></h1>
+            <p class="menu-tagline">
+              Face the machine sentinel across a rain-slicked tournament table. Curve shots,
+              trigger Bullet Time, counter Crimson Smashes, and claim #1 on the leaderboard.
+            </p>
+
+            <div class="mode-selector" role="tablist" aria-label="Game Mode">
+              <button
+                id="mode-arcade"
+                class="mode-btn active"
+                type="button"
+                data-mode="arcade"
+              >
+                <span class="mode-name">OVERDRIVE ARCADE</span>
+                <span class="mode-desc">3 Shields &bull; 4 Threat Phases &bull; Data Rings</span>
+              </button>
+              <button
+                id="mode-duel"
+                class="mode-btn"
+                type="button"
+                data-mode="duel"
+              >
+                <span class="mode-name">BOSS DUEL (TO 11)</span>
+                <span class="mode-desc">Classic Win-by-2 Match &bull; 3 AI Tiers</span>
+              </button>
+            </div>
+
+            <div id="duel-diff-wrap" class="diff-row hidden">
+              <span class="hud-label">AI TIER</span>
+              <div class="diff-pills">
+                <button class="diff-btn" data-diff="scout" type="button">SCOUT</button>
+                <button class="diff-btn active" data-diff="hunter" type="button">HUNTER</button>
+                <button class="diff-btn" data-diff="architect" type="button">ARCHITECT</button>
+              </div>
+            </div>
+
+            <div class="menu-cta-row">
+              <button id="btn-start-game" class="btn btn-primary btn-lg" type="button">
+                ENTER THE CONSTRUCT
+              </button>
+              <button id="btn-open-leaderboard" class="btn btn-secondary" type="button">
+                FULL LEADERBOARD
+              </button>
+            </div>
+
+            <div class="controls-strip">
+              <div><kbd>MOUSE</kbd> / <kbd>WASD</kbd> Move &amp; Spin</div>
+              <div><kbd>HOLD LMB</kbd> / <kbd>SPACE</kbd> Smash</div>
+              <div><kbd>RMB</kbd> / <kbd>SHIFT</kbd> Bullet Time</div>
+            </div>
+          </section>
+
+          <aside class="terminal-card menu-leaderboard-preview">
+            <div class="panel-head">
+              <div>
+                <div class="eyebrow">LIVE TELEMETRY</div>
+                <h2 class="panel-title">TOP OPERATORS</h2>
+              </div>
+              <span id="preview-source-badge" class="source-badge">LIVE</span>
+            </div>
+            <div id="menu-lb-list" class="lb-mini-list">
+              <div class="muted-copy">Syncing leaderboard...</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- Pause Overlay -->
+      <div id="screen-pause" class="modal-backdrop hidden">
+        <div class="terminal-card compact-card">
+          <div class="eyebrow">SIMULATION SUSPENDED</div>
+          <h2 class="modal-title">PAUSED</h2>
+          <div class="settings-row">
+            <label for="input-sensitivity">PADDLE SENSITIVITY</label>
+            <input id="input-sensitivity" type="range" min="0.7" max="1.6" step="0.05" value="1.0" />
+          </div>
+          <div class="modal-actions">
+            <button id="btn-resume" class="btn btn-primary" type="button">RESUME</button>
+            <button id="btn-restart-pause" class="btn btn-secondary" type="button">RESTART</button>
+            <button id="btn-quit-menu" class="btn btn-ghost" type="button">MAIN MENU</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Game Over & Score Submission Modal -->
+      <div id="screen-gameover" class="modal-backdrop hidden">
+        <div class="terminal-card gameover-card">
+          <div id="go-eyebrow" class="eyebrow">RUN COMPLETE</div>
+          <h2 id="go-title" class="modal-title">SYSTEM BREACH</h2>
+
+          <div class="stats-grid">
+            <div class="stat-box">
+              <div class="hud-label">FINAL SCORE</div>
+              <div id="go-score" class="stat-val accent-green">0</div>
+            </div>
+            <div class="stat-box">
+              <div class="hud-label">BEST RALLY</div>
+              <div id="go-rally" class="stat-val">0</div>
+            </div>
+            <div class="stat-box">
+              <div class="hud-label">PERFECT HITS</div>
+              <div id="go-perfect" class="stat-val">0</div>
+            </div>
+            <div class="stat-box">
+              <div class="hud-label" id="go-fourth-label">MAX PHASE</div>
+              <div id="go-fourth-val" class="stat-val accent-amber">1</div>
+            </div>
+          </div>
+
+          <form id="form-submit-score" class="submit-form">
+            <label for="input-callsign" class="hud-label">UPLOAD CALLSIGN TO LEADERBOARD</label>
+            <div class="submit-row">
+              <input
+                id="input-callsign"
+                type="text"
+                maxlength="16"
+                placeholder="NEO_01"
+                autocomplete="off"
+                spellcheck="false"
+                required
+              />
+              <button id="btn-submit-score" class="btn btn-primary" type="submit">
+                SUBMIT SCORE
+              </button>
+            </div>
+            <div id="submit-feedback" class="submit-feedback hidden"></div>
+          </form>
+
+          <div id="go-lb-preview" class="lb-mini-list go-lb-list"></div>
+
+          <div class="modal-actions">
+            <button id="btn-play-again" class="btn btn-primary" type="button">PLAY AGAIN</button>
+            <button id="btn-go-menu" class="btn btn-secondary" type="button">MAIN MENU</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Full Leaderboard Modal -->
+      <div id="screen-leaderboard" class="modal-backdrop hidden">
+        <div class="terminal-card leaderboard-modal">
+          <div class="panel-head">
+            <div>
+              <div class="eyebrow">ZION MAINFRAME RANKINGS</div>
+              <h2 class="modal-title">GLOBAL LEADERBOARD</h2>
+            </div>
+            <span id="modal-source-badge" class="source-badge">LIVE</span>
+          </div>
+
+          <div class="lb-tabs">
+            <button id="lb-tab-arcade" class="tab-btn active" type="button" data-tab="arcade">
+              OVERDRIVE ARCADE
+            </button>
+            <button id="lb-tab-duel" class="tab-btn" type="button" data-tab="duel">
+              BOSS DUEL
+            </button>
+          </div>
+
+          <div class="lb-table-wrap">
+            <table class="lb-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>OPERATOR</th>
+                  <th>SCORE</th>
+                  <th>RALLY</th>
+                  <th>DETAIL</th>
+                </tr>
+              </thead>
+              <tbody id="lb-table-body"></tbody>
+            </table>
+          </div>
+
+          <div class="modal-actions">
+            <button id="btn-close-leaderboard" class="btn btn-secondary" type="button">CLOSE</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- WebGL Context Lost Guard -->
+      <div id="screen-context-lost" class="modal-backdrop hidden">
+        <div class="terminal-card compact-card">
+          <div class="eyebrow">GRAPHICS INTERRUPT</div>
+          <h2 class="modal-title">WEBGL CONTEXT LOST</h2>
+          <p class="muted-copy">
+            Your GPU context was temporarily reset. Waiting for automatic restoration, or reload to
+            re-enter the construct.
+          </p>
+          <button id="btn-reload-page" class="btn btn-primary" type="button">RELOAD ARENA</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

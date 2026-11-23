@@ -1,0 +1,507 @@
+import type { Difficulty, GameMode } from './game/constants';
+import { GameEngine, type HudSnapshot } from './game/gameEngine';
+import { SceneManager } from './game/sceneManager';
+import {
+  fetchLeaderboard,
+  submitLeaderboardScore,
+  type LeaderboardEntry,
+} from './services/leaderboardClient';
+
+const CALLSIGN_STORAGE_KEY = 'sentinel_pong_callsign';
+const ONE_TO_ONE_STORAGE_KEY = 'sentinel_pong_1to1_mode';
+
+function byId<T extends HTMLElement>(id: string): T {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`Missing required UI element #${id}`);
+  return el as T;
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/[&<>"']/g, (ch) => {
+    const map: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    return map[ch] || ch;
+  });
+}
+
+class SentinelPongApp {
+  private sceneManager: SceneManager | null = null;
+  private engine: GameEngine | null = null;
+
+  private selectedMode: GameMode = 'arcade';
+  private selectedDifficulty: Difficulty = 'hunter';
+  private activeLbTab: GameMode = 'arcade';
+  private bloomOn = true;
+  private lastSnapshot: HudSnapshot | null = null;
+  private hasSubmittedRun = false;
+  private lastSubmittedId: string | null = null;
+  private prevState: string = 'LOADING';
+  private lastCalloutId = -1;
+  private lastSavedOneToOne: boolean | null = null;
+
+  // DOM refs
+  private readonly canvasContainer = byId<HTMLDivElement>('canvas-container');
+  private readonly screenLoading = byId<HTMLDivElement>('screen-loading');
+  private readonly loadingStatus = byId<HTMLParagraphElement>('loading-status');
+  private readonly loadingBar = byId<HTMLDivElement>('loading-bar');
+  private readonly loadingError = byId<HTMLDivElement>('loading-error');
+  private readonly btnRetryLoad = byId<HTMLButtonElement>('btn-retry-load');
+
+  private readonly screenMenu = byId<HTMLDivElement>('screen-menu');
+  private readonly screenPause = byId<HTMLDivElement>('screen-pause');
+  private readonly screenGameOver = byId<HTMLDivElement>('screen-gameover');
+  private readonly screenLeaderboard = byId<HTMLDivElement>('screen-leaderboard');
+  private readonly screenContextLost = byId<HTMLDivElement>('screen-context-lost');
+
+  private readonly hudEl = byId<HTMLDivElement>('hud');
+  private readonly fxBullet = byId<HTMLDivElement>('fx-bullet-vignette');
+  private readonly fxSmashWarn = byId<HTMLDivElement>('fx-smash-warning');
+
+  private readonly hudScore = byId<HTMLSpanElement>('hud-score');
+  private readonly hudCombo = byId<HTMLSpanElement>('hud-combo');
+  private readonly hudRally = byId<HTMLElement>('hud-rally');
+  private readonly hudBestRally = byId<HTMLElement>('hud-best-rally');
+  private readonly hudPhaseBadge = byId<HTMLDivElement>('hud-phase-badge');
+  private readonly hudArcadeShields = byId<HTMLDivElement>('hud-arcade-shields');
+  private readonly hudDuelScore = byId<HTMLDivElement>('hud-duel-score');
+  private readonly hudPPts = byId<HTMLElement>('hud-p-pts');
+  private readonly hudSPts = byId<HTMLElement>('hud-s-pts');
+  private readonly hudFocusBar = byId<HTMLDivElement>('hud-focus-bar');
+  private readonly hudSmashBar = byId<HTMLDivElement>('hud-smash-bar');
+  private readonly hudCallout = byId<HTMLDivElement>('hud-callout');
+  private readonly hudServePrompt = byId<HTMLDivElement>('hud-serve-prompt');
+  private readonly btnHudMute = byId<HTMLButtonElement>('btn-hud-mute');
+  private readonly btnHudOneToOne = byId<HTMLButtonElement>('btn-hud-one-to-one');
+  private readonly btnHudBloom = byId<HTMLButtonElement>('btn-hud-bloom');
+
+  private readonly duelDiffWrap = byId<HTMLDivElement>('duel-diff-wrap');
+  private readonly menuLbList = byId<HTMLDivElement>('menu-lb-list');
+  private readonly previewSourceBadge = byId<HTMLSpanElement>('preview-source-badge');
+  private readonly modalSourceBadge = byId<HTMLSpanElement>('modal-source-badge');
+  private readonly lbTableBody = byId<HTMLTableSectionElement>('lb-table-body');
+
+  private readonly goEyebrow = byId<HTMLDivElement>('go-eyebrow');
+  private readonly goTitle = byId<HTMLHeadingElement>('go-title');
+  private readonly goScore = byId<HTMLDivElement>('go-score');
+  private readonly goRally = byId<HTMLDivElement>('go-rally');
+  private readonly goPerfect = byId<HTMLDivElement>('go-perfect');
+  private readonly goFourthLabel = byId<HTMLDivElement>('go-fourth-label');
+  private readonly goFourthVal = byId<HTMLDivElement>('go-fourth-val');
+  private readonly formSubmit = byId<HTMLFormElement>('form-submit-score');
+  private readonly inputCallsign = byId<HTMLInputElement>('input-callsign');
+  private readonly btnSubmitScore = byId<HTMLButtonElement>('btn-submit-score');
+  private readonly submitFeedback = byId<HTMLDivElement>('submit-feedback');
+  private readonly goLbPreview = byId<HTMLDivElement>('go-lb-preview');
+
+  constructor() {
+    this.bindUiEvents();
+    const savedName = window.localStorage.getItem(CALLSIGN_STORAGE_KEY);
+    if (savedName) {
+      this.inputCallsign.value = savedName;
+    }
+    void this.initArena();
+  }
+
+  private bindUiEvents(): void {
+    this.btnRetryLoad.addEventListener('click', () => {
+      this.loadingError.classList.add('hidden');
+      this.btnRetryLoad.classList.add('hidden');
+      void this.initArena();
+    });
+
+    // Mode selector buttons
+    document.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = (btn.dataset.mode as GameMode) || 'arcade';
+        this.selectedMode = mode;
+        document.querySelectorAll('.mode-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.duelDiffWrap.classList.toggle('hidden', mode !== 'duel');
+        void this.refreshMenuLeaderboard(mode);
+      });
+    });
+
+    // Duel difficulty buttons
+    document.querySelectorAll<HTMLButtonElement>('.diff-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.selectedDifficulty = (btn.dataset.diff as Difficulty) || 'hunter';
+        document.querySelectorAll('.diff-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    byId<HTMLButtonElement>('btn-start-game').addEventListener('click', () => {
+      this.hasSubmittedRun = false;
+      this.lastSubmittedId = null;
+      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty);
+    });
+
+    byId<HTMLButtonElement>('btn-open-leaderboard').addEventListener('click', () => {
+      this.activeLbTab = this.selectedMode;
+      this.openLeaderboardModal();
+    });
+
+    byId<HTMLButtonElement>('btn-close-leaderboard').addEventListener('click', () => {
+      this.screenLeaderboard.classList.add('hidden');
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.activeLbTab = (btn.dataset.tab as GameMode) || 'arcade';
+        this.syncLeaderboardTabs();
+        void this.loadLeaderboardModal(this.activeLbTab);
+      });
+    });
+
+    // HUD controls
+    this.btnHudMute.addEventListener('click', () => {
+      this.engine?.toggleMute();
+    });
+
+    this.btnHudOneToOne.addEventListener('click', () => {
+      this.engine?.toggleOneToOneMode();
+    });
+
+    this.btnHudBloom.addEventListener('click', () => {
+      this.bloomOn = !this.bloomOn;
+      this.sceneManager?.setBloomEnabled(this.bloomOn);
+      this.btnHudBloom.textContent = this.bloomOn ? 'BLOOM ON' : 'BLOOM OFF';
+    });
+
+    byId<HTMLButtonElement>('btn-hud-pause').addEventListener('click', () => {
+      this.engine?.pauseGame();
+    });
+
+    // Pause controls
+    byId<HTMLButtonElement>('btn-resume').addEventListener('click', () => {
+      this.engine?.resumeGame();
+    });
+
+    byId<HTMLButtonElement>('btn-restart-pause').addEventListener('click', () => {
+      this.hasSubmittedRun = false;
+      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty);
+    });
+
+    byId<HTMLButtonElement>('btn-quit-menu').addEventListener('click', () => {
+      this.engine?.returnToMenu();
+      void this.refreshMenuLeaderboard(this.selectedMode);
+    });
+
+    byId<HTMLInputElement>('input-sensitivity').addEventListener('input', (e) => {
+      const val = Number((e.target as HTMLInputElement).value);
+      this.engine?.setSensitivity(val);
+    });
+
+    // Game Over actions
+    byId<HTMLButtonElement>('btn-play-again').addEventListener('click', () => {
+      this.hasSubmittedRun = false;
+      this.lastSubmittedId = null;
+      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty);
+    });
+
+    byId<HTMLButtonElement>('btn-go-menu').addEventListener('click', () => {
+      this.engine?.returnToMenu();
+      void this.refreshMenuLeaderboard(this.selectedMode);
+    });
+
+    // Leaderboard submission
+    this.formSubmit.addEventListener('submit', (e) => {
+      e.preventDefault();
+      void this.handleSubmitScore();
+    });
+
+    byId<HTMLButtonElement>('btn-reload-page').addEventListener('click', () => {
+      window.location.reload();
+    });
+  }
+
+  private async initArena(): Promise<void> {
+    this.loadingStatus.textContent = 'Initializing WebGL2 renderer...';
+    this.loadingBar.style.width = '10%';
+
+    try {
+      if (!this.sceneManager) {
+        this.sceneManager = new SceneManager(this.canvasContainer, {
+          onContextLost: () => {
+            this.engine?.pauseGame();
+            this.screenContextLost.classList.remove('hidden');
+          },
+          onContextRestored: () => {
+            this.screenContextLost.classList.add('hidden');
+          },
+        });
+      }
+
+      await this.sceneManager.loadModels((pct, label) => {
+        this.loadingBar.style.width = `${Math.max(12, pct)}%`;
+        this.loadingStatus.textContent = `Loaded 3D model: ${label} (${pct}%)`;
+      });
+
+      this.engine = new GameEngine(this.sceneManager, (snap) => this.renderHud(snap));
+      this.engine.setReadyMenu();
+      this.engine.startLoop();
+
+      this.screenLoading.classList.add('hidden');
+      void this.refreshMenuLeaderboard(this.selectedMode);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.loadingStatus.textContent = 'Initialization halted.';
+      this.loadingError.textContent = msg;
+      this.loadingError.classList.remove('hidden');
+      this.btnRetryLoad.classList.remove('hidden');
+    }
+  }
+
+  private renderHud(snap: HudSnapshot): void {
+    this.lastSnapshot = snap;
+
+    const isMenu = snap.state === 'MENU';
+    const isPlaying =
+      snap.state === 'SERVE' || snap.state === 'RALLY' || snap.state === 'POINT_PAUSE';
+    const isPaused = snap.state === 'PAUSED';
+    const isGameOver = snap.state === 'GAME_OVER';
+
+    this.screenMenu.classList.toggle('hidden', !isMenu);
+    this.hudEl.classList.toggle('hidden', !isPlaying && !isPaused);
+    this.screenPause.classList.toggle('hidden', !isPaused);
+    this.screenGameOver.classList.toggle('hidden', !isGameOver);
+
+    // Vignettes
+    this.fxBullet.classList.toggle('active', snap.bulletTimeActive);
+    this.fxSmashWarn.classList.toggle('active', snap.smashWarning && isPlaying);
+
+    // Numbers & bars
+    this.hudScore.textContent = snap.score.toLocaleString();
+    this.hudCombo.textContent = `x${snap.comboMultiplier}`;
+    this.hudRally.textContent = String(snap.rally);
+    this.hudBestRally.textContent = String(snap.bestRally);
+    this.hudFocusBar.style.width = `${snap.focus}%`;
+    this.hudSmashBar.style.width = `${Math.round(snap.smashCharge * 100)}%`;
+    this.btnHudMute.textContent = snap.muted ? 'SFX OFF' : 'SFX ON';
+    this.btnHudOneToOne.textContent = snap.oneToOneMode ? '1:1 ON' : '1:1 OFF';
+    this.btnHudOneToOne.classList.toggle('active', snap.oneToOneMode);
+    this.btnHudOneToOne.setAttribute('aria-pressed', String(snap.oneToOneMode));
+    if (this.lastSavedOneToOne !== snap.oneToOneMode) {
+      this.lastSavedOneToOne = snap.oneToOneMode;
+      try {
+        window.localStorage.setItem(ONE_TO_ONE_STORAGE_KEY, snap.oneToOneMode ? '1' : '0');
+      } catch {
+        // Ignore storage restrictions
+      }
+    }
+
+    // Mode-specific top center
+    if (snap.mode === 'arcade') {
+      this.hudPhaseBadge.textContent = `PHASE ${snap.threatPhase.phase} // ${snap.threatPhase.name}`;
+      this.hudPhaseBadge.style.color = snap.threatPhase.accentHex;
+      this.hudArcadeShields.classList.remove('hidden');
+      this.hudDuelScore.classList.add('hidden');
+
+      let pips = '';
+      for (let i = 0; i < snap.maxShields; i++) {
+        pips += `<span class="shield-pip${i >= snap.shields ? ' lost' : ''}"></span>`;
+      }
+      this.hudArcadeShields.innerHTML = pips;
+    } else {
+      this.hudPhaseBadge.textContent = `BOSS DUEL // ${snap.difficulty.toUpperCase()}`;
+      this.hudPhaseBadge.style.color = snap.threatPhase.accentHex;
+      this.hudArcadeShields.classList.add('hidden');
+      this.hudDuelScore.classList.remove('hidden');
+      this.hudPPts.textContent = String(snap.playerPoints);
+      this.hudSPts.textContent = String(snap.sentinelPoints);
+    }
+
+    // Serve prompt
+    const showServe = snap.state === 'SERVE' && snap.server === 'player';
+    this.hudServePrompt.classList.toggle('hidden', !showServe);
+
+    // Transient callout
+    if (snap.callout) {
+      if (snap.callout.id !== this.lastCalloutId) {
+        this.lastCalloutId = snap.callout.id;
+        this.hudCallout.textContent = snap.callout.text;
+        this.hudCallout.className = `callout ${snap.callout.tone}`;
+      }
+      this.hudCallout.classList.remove('hidden');
+    } else {
+      this.hudCallout.classList.add('hidden');
+    }
+
+    // Populate Game Over modal once on transition
+    if (isGameOver && this.prevState !== 'GAME_OVER') {
+      this.populateGameOver(snap);
+    }
+    this.prevState = snap.state;
+  }
+
+  private populateGameOver(snap: HudSnapshot): void {
+    this.submitFeedback.classList.add('hidden');
+    this.btnSubmitScore.disabled = false;
+    this.btnSubmitScore.textContent = 'SUBMIT SCORE';
+    this.hasSubmittedRun = false;
+
+    if (snap.mode === 'duel') {
+      const won = snap.winner === 'player';
+      this.goEyebrow.textContent = won ? 'SENTINEL NEUTRALIZED' : 'MATCH TERMINATED';
+      this.goTitle.textContent = won ? 'VICTORY IN THE CONSTRUCT' : 'SENTINEL PREVAILS';
+      this.goTitle.style.color = won ? 'var(--emerald)' : 'var(--crimson)';
+      this.goFourthLabel.textContent = 'MATCH SCORE';
+      this.goFourthVal.textContent = `${snap.playerPoints}-${snap.sentinelPoints}`;
+    } else {
+      this.goEyebrow.textContent = 'OVERDRIVE RUN COMPLETE';
+      this.goTitle.textContent = 'SYSTEM BREACH';
+      this.goTitle.style.color = 'var(--crimson)';
+      this.goFourthLabel.textContent = 'MAX PHASE';
+      this.goFourthVal.textContent = `${snap.maxPhaseReached}`;
+    }
+
+    this.goScore.textContent = snap.score.toLocaleString();
+    this.goRally.textContent = String(snap.bestRally);
+    this.goPerfect.textContent = String(snap.perfectHits);
+
+    void this.refreshGameOverLeaderboard(snap.mode);
+  }
+
+  private async handleSubmitScore(): Promise<void> {
+    if (!this.lastSnapshot || this.hasSubmittedRun) return;
+    const rawName = this.inputCallsign.value.trim();
+    if (!rawName) {
+      this.showSubmitFeedback('Enter a callsign (1–16 letters or numbers).', true);
+      return;
+    }
+
+    this.btnSubmitScore.disabled = true;
+    this.btnSubmitScore.textContent = 'UPLOADING...';
+
+    const snap = this.lastSnapshot;
+    const res = await submitLeaderboardScore({
+      name: rawName,
+      mode: snap.mode,
+      score: snap.score,
+      bestRally: snap.bestRally,
+      maxPhase: snap.maxPhaseReached,
+      perfectHits: snap.perfectHits,
+      difficulty: snap.mode === 'arcade' ? 'overdrive' : snap.difficulty,
+      matchScore: snap.mode === 'duel' ? `${snap.playerPoints}-${snap.sentinelPoints}` : undefined,
+    });
+
+    if (!res.ok) {
+      this.btnSubmitScore.disabled = false;
+      this.btnSubmitScore.textContent = 'SUBMIT SCORE';
+      this.showSubmitFeedback(res.error || 'Submission failed.', true);
+      return;
+    }
+
+    this.hasSubmittedRun = true;
+    this.lastSubmittedId = res.entry?.id ?? null;
+    if (res.entry?.name) {
+      window.localStorage.setItem(CALLSIGN_STORAGE_KEY, res.entry.name);
+      this.inputCallsign.value = res.entry.name;
+    }
+
+    const rankText = res.rank ? `RANK #${res.rank}` : 'LOGGED';
+    const recordTag = res.isTopRecord ? ' // NEW #1 RECORD!' : '';
+    const cacheTag = res.source === 'local' ? ' (LOCAL CACHE)' : '';
+    this.showSubmitFeedback(`SCORE UPLOADED — ${rankText}${recordTag}${cacheTag}`, false);
+    this.btnSubmitScore.textContent = 'UPLOADED';
+
+    if (res.entries) {
+      this.renderMiniLeaderboard(this.goLbPreview, res.entries.slice(0, 20), this.lastSubmittedId);
+      const hi = this.goLbPreview.querySelector('.highlight');
+      hi?.scrollIntoView({ block: 'nearest' });
+    } else {
+      void this.refreshGameOverLeaderboard(snap.mode);
+    }
+  }
+
+  private showSubmitFeedback(msg: string, isErr: boolean): void {
+    this.submitFeedback.textContent = msg;
+    this.submitFeedback.classList.toggle('err', isErr);
+    this.submitFeedback.classList.remove('hidden');
+  }
+
+  private renderMiniLeaderboard(
+    container: HTMLElement,
+    entries: LeaderboardEntry[],
+    highlightId: string | null = null
+  ): void {
+    if (entries.length === 0) {
+      container.innerHTML = '<div class="muted-copy">No operators recorded yet.</div>';
+      return;
+    }
+    container.innerHTML = entries
+      .map(
+        (entry, idx) => `
+          <div class="lb-mini-row${highlightId && entry.id === highlightId ? ' highlight' : ''}">
+            <span class="lb-rank">#${idx + 1}</span>
+            <span class="lb-name">${escapeHtml(entry.name)}</span>
+            <span class="lb-score">${entry.score.toLocaleString()}</span>
+          </div>
+        `
+      )
+      .join('');
+  }
+
+  private async refreshMenuLeaderboard(mode: GameMode): Promise<void> {
+    const res = await fetchLeaderboard(mode, 6);
+    this.previewSourceBadge.textContent = res.source === 'server' ? 'LIVE' : 'LOCAL';
+    this.previewSourceBadge.classList.toggle('local', res.source !== 'server');
+    this.renderMiniLeaderboard(this.menuLbList, res.entries);
+  }
+
+  private async refreshGameOverLeaderboard(mode: GameMode): Promise<void> {
+    const res = await fetchLeaderboard(mode, 15);
+    this.renderMiniLeaderboard(this.goLbPreview, res.entries, this.lastSubmittedId);
+    const hi = this.goLbPreview.querySelector('.highlight');
+    hi?.scrollIntoView({ block: 'nearest' });
+  }
+
+  private openLeaderboardModal(): void {
+    this.syncLeaderboardTabs();
+    this.screenLeaderboard.classList.remove('hidden');
+    void this.loadLeaderboardModal(this.activeLbTab);
+  }
+
+  private syncLeaderboardTabs(): void {
+    document.querySelectorAll<HTMLButtonElement>('.tab-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tab === this.activeLbTab);
+    });
+  }
+
+  private async loadLeaderboardModal(mode: GameMode): Promise<void> {
+    this.lbTableBody.innerHTML = '<tr><td colspan="5" class="muted-copy">Loading rankings...</td></tr>';
+    const res = await fetchLeaderboard(mode, 25);
+    this.modalSourceBadge.textContent = res.source === 'server' ? 'LIVE SERVER' : 'LOCAL CACHE';
+    this.modalSourceBadge.classList.toggle('local', res.source !== 'server');
+
+    if (res.entries.length === 0) {
+      this.lbTableBody.innerHTML = '<tr><td colspan="5" class="muted-copy">No records yet.</td></tr>';
+      return;
+    }
+
+    this.lbTableBody.innerHTML = res.entries
+      .map((entry, idx) => {
+        const detail =
+          entry.mode === 'duel'
+            ? `${entry.difficulty.toUpperCase()}${entry.matchScore ? ` (${entry.matchScore})` : ''}`
+            : `PHASE ${entry.maxPhase} • ${entry.perfectHits} PERF`;
+        return `
+          <tr>
+            <td>#${idx + 1}</td>
+            <td>${escapeHtml(entry.name)}</td>
+            <td>${entry.score.toLocaleString()}</td>
+            <td>${entry.bestRally}</td>
+            <td>${escapeHtml(detail)}</td>
+          </tr>
+        `;
+      })
+      .join('');
+  }
+}
+
+new SentinelPongApp();
