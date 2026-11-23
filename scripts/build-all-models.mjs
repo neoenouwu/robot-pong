@@ -4,7 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { verifyAllModels } from './verify-models.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const generators = ['build-sentinel.mjs', 'build-props.mjs', 'build-arena.mjs'];
+const generators = [
+  'build-sentinel.mjs',
+  'build-sentinel-reference.mjs',
+  'build-props.mjs',
+  'build-arena.mjs',
+];
 
 for (const script of generators) {
   console.log(`Running ${script}...`);

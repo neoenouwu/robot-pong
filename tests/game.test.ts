@@ -14,6 +14,7 @@ import {
 } from '../src/game/physics';
 import { projectNdcToZPlane } from '../src/game/sceneManager';
 import { computeFloatingPopupOrigin } from '../src/game/matrixEffects';
+import { DEFAULT_ROBOT_SKIN_ID, getRobotSkin, ROBOT_SKINS } from '../src/game/robotSkins';
 import { PLAYER_PADDLE, SENTINEL, TABLE } from '../src/game/constants';
 import {
   LeaderboardStore,
@@ -32,9 +33,9 @@ function makePaddle(x: number, y: number, z: number): PaddleState {
 }
 
 describe('Constructed 3D GLB Model Integrity', () => {
-  it('verifies all 5 binary GLB models exist, conform to glTF 2.0, and expose required nodes', () => {
+  it('verifies all 6 binary GLB models exist, conform to glTF 2.0, and expose required nodes', () => {
     const results = verifyAllModels();
-    expect(results.length).toBe(5);
+    expect(results.length).toBe(6);
     for (const model of results) {
       expect(model.triangles).toBeGreaterThan(300);
       expect(model.nodes).toBeGreaterThan(1);
@@ -44,6 +45,19 @@ describe('Constructed 3D GLB Model Integrity', () => {
     expect(sentinel).toBeDefined();
     expect(sentinel!.triangles).toBeGreaterThan(4000);
     expect(sentinel!.textures).toBeGreaterThanOrEqual(2);
+
+    const sentinelRef = results.find((r) => r.file === 'sentinel_reference.glb');
+    expect(sentinelRef).toBeDefined();
+    expect(sentinelRef!.triangles).toBeGreaterThan(8000);
+    expect(sentinelRef!.textures).toBeGreaterThanOrEqual(2);
+  });
+
+  it('resolves robot skin registry with classic as default and graceful fallback on unknown IDs', () => {
+    expect(DEFAULT_ROBOT_SKIN_ID).toBe('classic');
+    expect(ROBOT_SKINS.length).toBeGreaterThanOrEqual(2);
+    expect(getRobotSkin(null).id).toBe('classic');
+    expect(getRobotSkin('does-not-exist').id).toBe('classic');
+    expect(getRobotSkin('reference').modelUrl).toBe('/models/sentinel_reference.glb');
   });
 });
 

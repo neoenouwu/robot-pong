@@ -149,6 +149,14 @@
               </div>
             </div>
 
+            <div class="robot-selector-row">
+              <div class="robot-selector-head">
+                <span class="hud-label">ROBOT SKIN // DEV PREVIEW</span>
+                <span id="menu-skin-status" class="skin-status"></span>
+              </div>
+              <div id="menu-robot-pills" class="robot-pills" role="radiogroup" aria-label="Robot Skin"></div>
+            </div>
+
             <div class="menu-cta-row">
               <button id="btn-start-game" class="btn btn-primary btn-lg" type="button">
                 ENTER THE CONSTRUCT
@@ -185,6 +193,13 @@
         <div class="terminal-card compact-card">
           <div class="eyebrow">SIMULATION SUSPENDED</div>
           <h2 class="modal-title">PAUSED</h2>
+          <div class="robot-selector-row pause-robot-row">
+            <div class="robot-selector-head">
+              <span class="hud-label">ROBOT SKIN // DEV PREVIEW</span>
+              <span id="pause-skin-status" class="skin-status"></span>
+            </div>
+            <div id="pause-robot-pills" class="robot-pills" role="radiogroup" aria-label="Robot Skin"></div>
+          </div>
           <div class="settings-row">
             <label for="input-sensitivity">PADDLE SENSITIVITY</label>
             <input id="input-sensitivity" type="range" min="0.7" max="1.6" step="0.05" value="1.0" />

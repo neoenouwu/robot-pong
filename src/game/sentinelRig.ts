@@ -21,9 +21,23 @@ interface BgTentacleTrack {
   ampScale: number;
 }
 
+export interface SentinelRigSnapshot {
+  paddleState: PaddleState;
+  targetPaddlePos: THREE.Vector3;
+  swingImpulse: number;
+  recoilImpulse: number;
+  smashTelegraph: number;
+  plannedSmash: boolean;
+  plannedErrorX: number;
+  trackedShotId: number;
+  shotCounter: number;
+  clock: number;
+}
+
 export class SentinelController {
   public readonly root: THREE.Object3D;
   public readonly paddleObject: THREE.Object3D;
+  private readonly armArcStyle: 'classic' | 'high_coil';
 
   private carapace: THREE.Object3D | null = null;
   private mainEye: THREE.Object3D | null = null;
@@ -68,11 +82,13 @@ export class SentinelController {
   constructor(
     sentinelModel: THREE.Object3D,
     paddleModel: THREE.Object3D,
-    eyeLight?: THREE.PointLight
+    eyeLight?: THREE.PointLight,
+    armArcStyle: 'classic' | 'high_coil' = 'classic'
   ) {
     this.root = sentinelModel;
     this.paddleObject = paddleModel;
     this.eyeLight = eyeLight ?? null;
+    this.armArcStyle = armArcStyle;
 
     this.root.position.set(
       SENTINEL.HOME_POS.x,
@@ -91,6 +107,44 @@ export class SentinelController {
     this.discoverRigNodes();
   }
 
+  public exportState(): SentinelRigSnapshot {
+    return {
+      paddleState: {
+        pos: { ...this.paddleState.pos },
+        prevPos: { ...this.paddleState.prevPos },
+        vel: { ...this.paddleState.vel },
+        smashCharge: this.paddleState.smashCharge,
+      },
+      targetPaddlePos: this.targetPaddlePos.clone(),
+      swingImpulse: this.swingImpulse,
+      recoilImpulse: this.recoilImpulse,
+      smashTelegraph: this.smashTelegraph,
+      plannedSmash: this.plannedSmash,
+      plannedErrorX: this.plannedErrorX,
+      trackedShotId: this.trackedShotId,
+      shotCounter: this.shotCounter,
+      clock: this.clock,
+    };
+  }
+
+  public importState(snap: SentinelRigSnapshot): void {
+    this.paddleState = {
+      pos: { ...snap.paddleState.pos },
+      prevPos: { ...snap.paddleState.prevPos },
+      vel: { ...snap.paddleState.vel },
+      smashCharge: snap.paddleState.smashCharge,
+    };
+    this.targetPaddlePos.copy(snap.targetPaddlePos);
+    this.swingImpulse = snap.swingImpulse;
+    this.recoilImpulse = snap.recoilImpulse;
+    this.smashTelegraph = snap.smashTelegraph;
+    this.plannedSmash = snap.plannedSmash;
+    this.plannedErrorX = snap.plannedErrorX;
+    this.trackedShotId = snap.trackedShotId;
+    this.shotCounter = snap.shotCounter;
+    this.clock = snap.clock;
+  }
+
   private discoverRigNodes(): void {
     this.carapace = this.root.getObjectByName('Carapace') ?? null;
     this.mainEye = this.root.getObjectByName('MainEyeCore') ?? null;
@@ -105,8 +159,8 @@ export class SentinelController {
       }
     }
 
-    // Collect BgTentacle_0 .. BgTentacle_5
-    for (let t = 0; t < 8; t++) {
+    // Collect BgTentacle_0 .. BgTentacle_11 (supports 6, 8, or more tentacles across skins)
+    for (let t = 0; t < 12; t++) {
       const grp = this.root.getObjectByName(`BgTentacle_${t}`);
       if (!grp) continue;
       const segs: THREE.Object3D[] = [];
@@ -401,24 +455,37 @@ export class SentinelController {
     this._invRootMat.copy(this.root.matrixWorld).invert();
     this._p3.copy(this._vA).applyMatrix4(this._invRootMat);
 
-    // Shoulder socket on Sentinel's left-front rim (-X in world space, matching reference artwork!)
-    this._p0.set(-0.62, -0.08, 0.25);
-
-    // Dramatic sweeping left-side coil arc (matching the iconic massive curved arm in the photo)
+    // Shoulder socket & dramatic sweeping left-side coil arc
     const energy = 0.05 + this.smashTelegraph * 0.14 + (phase.phase - 1) * 0.015;
     const waveX = Math.sin(this.clock * 2.2) * energy;
     const waveY = Math.cos(this.clock * 1.9) * energy;
 
-    this._p1.set(
-      Math.min(-1.42, this._p3.x - 0.72) + waveX,
-      0.34 + waveY + this.smashTelegraph * 0.22,
-      0.58
-    );
-    this._p2.set(
-      Math.min(-1.05, this._p3.x - 0.44) - waveX * 0.7,
-      this._p3.y - 0.12 + waveY * 0.6,
-      this._p3.z - 0.34
-    );
+    if (this.armArcStyle === 'high_coil') {
+      // Sweeping overhead-left heavy C-coil matching the reference artwork's massive foreground arm
+      this._p0.set(-0.68, 0.14, 0.12);
+      this._p1.set(
+        Math.min(-1.58, this._p3.x - 0.88) + waveX,
+        0.86 + waveY + this.smashTelegraph * 0.24,
+        0.62
+      );
+      this._p2.set(
+        Math.min(-1.18, this._p3.x - 0.56) - waveX * 0.65,
+        this._p3.y - 0.16 + waveY * 0.5,
+        this._p3.z - 0.36
+      );
+    } else {
+      this._p0.set(-0.62, -0.08, 0.25);
+      this._p1.set(
+        Math.min(-1.42, this._p3.x - 0.72) + waveX,
+        0.34 + waveY + this.smashTelegraph * 0.22,
+        0.58
+      );
+      this._p2.set(
+        Math.min(-1.05, this._p3.x - 0.44) - waveX * 0.7,
+        this._p3.y - 0.12 + waveY * 0.6,
+        this._p3.z - 0.34
+      );
+    }
 
     // Evaluate cubic Bezier curve directly (zero allocations!)
     const evalCubic = (t: number, out: THREE.Vector3) => {

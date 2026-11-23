@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { TABLE } from './constants';
 import { createMatrixRainWalls, GameplayVFX, SteamMistSystem } from './matrixEffects';
+import { getRobotSkin, type RobotSkinDefinition } from './robotSkins';
 import { SentinelController } from './sentinelRig';
 import type { BallState, PaddleState } from './physics';
 
@@ -104,11 +105,17 @@ export class SceneManager {
 
   public sentinelController: SentinelController | null = null;
   public playerPaddleObj: THREE.Object3D | null = null;
+  public sentinelPaddleObj: THREE.Object3D | null = null;
   public ballObj: THREE.Object3D | null = null;
   public readonly vfx: GameplayVFX;
   private readonly steam: SteamMistSystem;
   private readonly matrixRain: ReturnType<typeof createMatrixRainWalls>;
   private readonly sentinelEyeLight: THREE.PointLight;
+  private readonly gltfLoader = new GLTFLoader();
+  private readonly sentinelSkinCache = new Map<string, THREE.Object3D>();
+  private activeSentinelObj: THREE.Object3D | null = null;
+  private activeSkinId: string = 'classic';
+  private skinLoadSeq = 0;
 
   private shakeMagnitude = 0;
   private cameraClock = 0;
@@ -285,12 +292,15 @@ export class SceneManager {
     );
   }
 
-  public async loadModels(onProgress?: (pct: number, label: string) => void): Promise<LoadedModels> {
-    const loader = new GLTFLoader();
+  public async loadModels(
+    onProgress?: (pct: number, label: string) => void,
+    initialSkin?: RobotSkinDefinition
+  ): Promise<LoadedModels> {
+    const skin = initialSkin ?? getRobotSkin(null);
     const specs: { key: string; url: string; label: string }[] = [
       { key: 'arena', url: '/models/arena_structure.glb', label: 'Industrial Cathedral' },
       { key: 'table', url: '/models/table.glb', label: 'Wet Tournament Table' },
-      { key: 'sentinel', url: '/models/sentinel.glb', label: 'Sentinel Boss Rig' },
+      { key: 'sentinel', url: skin.modelUrl, label: `Sentinel (${skin.name})` },
       { key: 'paddle', url: '/models/paddle.glb', label: 'Table Tennis Paddles' },
       { key: 'ball', url: '/models/ball.glb', label: 'Regulation Ball' },
     ];
@@ -302,7 +312,7 @@ export class SceneManager {
       let lastErr: unknown;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const gltf = await loader.loadAsync(url);
+          const gltf = await this.gltfLoader.loadAsync(url);
           return gltf.scene;
         } catch (err) {
           lastErr = err;
@@ -389,12 +399,17 @@ export class SceneManager {
     this.scene.add(playerPaddle);
     this.scene.add(ball);
 
+    this.sentinelSkinCache.set(skin.id, sentinel);
+    this.activeSentinelObj = sentinel;
+    this.activeSkinId = skin.id;
+    this.sentinelPaddleObj = sentinelPaddle;
     this.playerPaddleObj = playerPaddle;
     this.ballObj = ball;
     this.sentinelController = new SentinelController(
       sentinel,
       sentinelPaddle,
-      this.sentinelEyeLight
+      this.sentinelEyeLight,
+      skin.armArcStyle
     );
 
     return {
@@ -405,6 +420,83 @@ export class SceneManager {
       ball,
       arena,
     };
+  }
+
+  /**
+   * Hot-swaps the Sentinel 3D model skin live in the scene (cached after first load,
+   * race-guarded via monotonic sequence id, preserving active gameplay rig state).
+   */
+  public async setSentinelSkin(skin: RobotSkinDefinition): Promise<{ applied: boolean; skinId: string }> {
+    if (this.activeSkinId === skin.id && this.activeSentinelObj) {
+      return { applied: true, skinId: skin.id };
+    }
+    if (!this.sentinelPaddleObj) {
+      throw new Error('Arena is not initialized yet.');
+    }
+
+    const reqSeq = ++this.skinLoadSeq;
+    let model = this.sentinelSkinCache.get(skin.id);
+
+    if (!model) {
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const gltf = await this.gltfLoader.loadAsync(skin.modelUrl);
+          model = gltf.scene;
+          break;
+        } catch (err) {
+          lastErr = err;
+          await new Promise((r) => setTimeout(r, 200));
+        }
+      }
+      if (!model) {
+        throw new Error(
+          `Failed to load robot skin "${skin.name}" (${skin.modelUrl}): ${
+            lastErr instanceof Error ? lastErr.message : String(lastErr)
+          }`
+        );
+      }
+
+      model.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const m = obj as THREE.Mesh;
+          m.castShadow = true;
+          m.receiveShadow = true;
+        }
+      });
+      this.sentinelSkinCache.set(skin.id, model);
+    }
+
+    // Ignore stale async completion if user clicked another skin while loading
+    if (reqSeq !== this.skinLoadSeq) {
+      return { applied: false, skinId: this.activeSkinId };
+    }
+
+    const prevState = this.sentinelController?.exportState();
+    if (this.activeSentinelObj) {
+      this.scene.remove(this.activeSentinelObj);
+    }
+
+    this.scene.add(model);
+    this.activeSentinelObj = model;
+    this.activeSkinId = skin.id;
+
+    const nextCtrl = new SentinelController(
+      model,
+      this.sentinelPaddleObj,
+      this.sentinelEyeLight,
+      skin.armArcStyle
+    );
+    if (prevState) {
+      nextCtrl.importState(prevState);
+    }
+    this.sentinelController = nextCtrl;
+
+    return { applied: true, skinId: skin.id };
+  }
+
+  public getActiveSkinId(): string {
+    return this.activeSkinId;
   }
 
   public syncPlayerPaddle(paddle: PaddleState, bulletTime: boolean): void {

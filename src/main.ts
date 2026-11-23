@@ -1,5 +1,10 @@
 import type { Difficulty, GameMode } from './game/constants';
 import { GameEngine, type HudSnapshot } from './game/gameEngine';
+import {
+  DEFAULT_ROBOT_SKIN_ID,
+  getRobotSkin,
+  ROBOT_SKINS,
+} from './game/robotSkins';
 import { SceneManager } from './game/sceneManager';
 import {
   fetchLeaderboard,
@@ -9,6 +14,7 @@ import {
 
 const CALLSIGN_STORAGE_KEY = 'sentinel_pong_callsign';
 const ONE_TO_ONE_STORAGE_KEY = 'sentinel_pong_1to1_mode';
+const ROBOT_SKIN_STORAGE_KEY = 'sentinel_pong_robot_skin';
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -35,6 +41,7 @@ class SentinelPongApp {
 
   private selectedMode: GameMode = 'arcade';
   private selectedDifficulty: Difficulty = 'hunter';
+  private selectedSkinId: string = DEFAULT_ROBOT_SKIN_ID;
   private activeLbTab: GameMode = 'arcade';
   private bloomOn = true;
   private lastSnapshot: HudSnapshot | null = null;
@@ -80,6 +87,10 @@ class SentinelPongApp {
   private readonly btnHudBloom = byId<HTMLButtonElement>('btn-hud-bloom');
 
   private readonly duelDiffWrap = byId<HTMLDivElement>('duel-diff-wrap');
+  private readonly menuRobotPills = byId<HTMLDivElement>('menu-robot-pills');
+  private readonly pauseRobotPills = byId<HTMLDivElement>('pause-robot-pills');
+  private readonly menuSkinStatus = byId<HTMLSpanElement>('menu-skin-status');
+  private readonly pauseSkinStatus = byId<HTMLSpanElement>('pause-skin-status');
   private readonly menuLbList = byId<HTMLDivElement>('menu-lb-list');
   private readonly previewSourceBadge = byId<HTMLSpanElement>('preview-source-badge');
   private readonly modalSourceBadge = byId<HTMLSpanElement>('modal-source-badge');
@@ -99,12 +110,103 @@ class SentinelPongApp {
   private readonly goLbPreview = byId<HTMLDivElement>('go-lb-preview');
 
   constructor() {
+    try {
+      const savedSkin = window.localStorage.getItem(ROBOT_SKIN_STORAGE_KEY);
+      this.selectedSkinId = getRobotSkin(savedSkin).id;
+    } catch {
+      this.selectedSkinId = DEFAULT_ROBOT_SKIN_ID;
+    }
+    this.renderRobotSelectorPills();
     this.bindUiEvents();
     const savedName = window.localStorage.getItem(CALLSIGN_STORAGE_KEY);
     if (savedName) {
       this.inputCallsign.value = savedName;
     }
     void this.initArena();
+  }
+
+  private renderRobotSelectorPills(): void {
+    const html = ROBOT_SKINS.map(
+      (skin) => `
+        <button
+          class="robot-skin-btn${skin.id === this.selectedSkinId ? ' active' : ''}"
+          type="button"
+          role="radio"
+          aria-checked="${skin.id === this.selectedSkinId}"
+          data-skin-id="${escapeHtml(skin.id)}"
+          title="${escapeHtml(skin.description)}"
+        >
+          <span>${escapeHtml(skin.name)}</span>
+          <span class="robot-skin-badge">${escapeHtml(skin.badge)}</span>
+        </button>
+      `
+    ).join('');
+
+    this.menuRobotPills.innerHTML = html;
+    this.pauseRobotPills.innerHTML = html;
+
+    const bindContainer = (container: HTMLElement) => {
+      container.querySelectorAll<HTMLButtonElement>('.robot-skin-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const skinId = btn.dataset.skinId;
+          if (skinId) {
+            void this.handleSelectRobotSkin(skinId);
+          }
+        });
+      });
+    };
+    bindContainer(this.menuRobotPills);
+    bindContainer(this.pauseRobotPills);
+  }
+
+  private syncRobotSkinButtons(): void {
+    document.querySelectorAll<HTMLButtonElement>('.robot-skin-btn').forEach((btn) => {
+      const isActive = btn.dataset.skinId === this.selectedSkinId;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-checked', String(isActive));
+    });
+  }
+
+  private setSkinStatus(msg: string, isErr = false): void {
+    this.menuSkinStatus.textContent = msg;
+    this.pauseSkinStatus.textContent = msg;
+    this.menuSkinStatus.classList.toggle('err', isErr);
+    this.pauseSkinStatus.classList.toggle('err', isErr);
+  }
+
+  private async handleSelectRobotSkin(skinId: string): Promise<void> {
+    const skin = getRobotSkin(skinId);
+    if (!this.sceneManager) {
+      this.selectedSkinId = skin.id;
+      this.syncRobotSkinButtons();
+      return;
+    }
+
+    const prevId = this.selectedSkinId;
+    this.selectedSkinId = skin.id;
+    this.syncRobotSkinButtons();
+    this.setSkinStatus('LOADING GLB...');
+
+    try {
+      const res = await this.sceneManager.setSentinelSkin(skin);
+      if (!res.applied) {
+        // Stale request superseded by a newer click
+        return;
+      }
+      this.selectedSkinId = res.skinId;
+      this.syncRobotSkinButtons();
+      this.setSkinStatus('');
+      try {
+        window.localStorage.setItem(ROBOT_SKIN_STORAGE_KEY, skin.id);
+      } catch {
+        // Ignore storage quota errors
+      }
+    } catch (err) {
+      this.selectedSkinId = prevId;
+      this.syncRobotSkinButtons();
+      const msg = err instanceof Error ? err.message : 'Skin load failed';
+      this.setSkinStatus(msg.slice(0, 48), true);
+    }
   }
 
   private bindUiEvents(): void {
@@ -240,7 +342,7 @@ class SentinelPongApp {
       await this.sceneManager.loadModels((pct, label) => {
         this.loadingBar.style.width = `${Math.max(12, pct)}%`;
         this.loadingStatus.textContent = `Loaded 3D model: ${label} (${pct}%)`;
-      });
+      }, getRobotSkin(this.selectedSkinId));
 
       this.engine = new GameEngine(this.sceneManager, (snap) => this.renderHud(snap));
       this.engine.setReadyMenu();

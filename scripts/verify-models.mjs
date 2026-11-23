@@ -83,6 +83,21 @@ export const REQUIRED_MODELS = {
       'PaddleSocket',
     ],
   },
+  'sentinel_reference.glb': {
+    minTriangles: 8000,
+    requiredNodes: [
+      'SentinelRoot',
+      'Carapace',
+      'MainEyeCore',
+      'SubEyes',
+      'PaddleArm_Seg_00',
+      'PaddleArm_Seg_15',
+      'PaddleClaw',
+      'PaddleSocket',
+      'BgTentacle_0',
+      'BgTentacle_7',
+    ],
+  },
   'table.glb': {
     minTriangles: 800,
     requiredNodes: ['TableRoot', 'TableTop', 'NetMesh'],
