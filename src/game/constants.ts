@@ -44,7 +44,7 @@ export const SENTINEL = {
 } as const;
 
 export type GameMode = 'arcade' | 'duel';
-export type Difficulty = 'scout' | 'hunter' | 'architect';
+export type Difficulty = 'easy' | 'medium' | 'hard';
 export type StoryStage = 1 | 2;
 
 export const STORY_POINTS_TO_WIN = 5;
@@ -124,9 +124,9 @@ export const THREAT_PHASES: readonly ThreatPhaseConfig[] = [
 ] as const;
 
 export const DUEL_DIFFICULTIES: Record<Difficulty, ThreatPhaseConfig> = {
-  scout: {
+  easy: {
     phase: 1,
-    name: 'SCOUT',
+    name: 'EASY',
     minScore: 0,
     sentinelSpeed: 1.24,
     reactionDelay: 0.25,
@@ -138,9 +138,9 @@ export const DUEL_DIFFICULTIES: Record<Difficulty, ThreatPhaseConfig> = {
     eyeColor: 0xff2222,
     accentHex: '#00ff6a',
   },
-  hunter: {
+  medium: {
     phase: 2,
-    name: 'HUNTER',
+    name: 'MEDIUM',
     minScore: 0,
     sentinelSpeed: 1.68,
     reactionDelay: 0.17,
@@ -152,9 +152,9 @@ export const DUEL_DIFFICULTIES: Record<Difficulty, ThreatPhaseConfig> = {
     eyeColor: 0xff1a22,
     accentHex: '#ffb020',
   },
-  architect: {
+  hard: {
     phase: 4,
-    name: 'ARCHITECT',
+    name: 'HARD',
     minScore: 0,
     sentinelSpeed: 2.12,
     reactionDelay: 0.11,
@@ -177,7 +177,7 @@ export function getThreatPhaseForScore(score: number): ThreatPhaseConfig {
 }
 
 export const STORY_STAGE2_CONFIGS: Record<Difficulty, ThreatPhaseConfig> = {
-  scout: {
+  easy: {
     phase: 2,
     name: 'APEX SENTINEL',
     minScore: 0,
@@ -191,7 +191,7 @@ export const STORY_STAGE2_CONFIGS: Record<Difficulty, ThreatPhaseConfig> = {
     eyeColor: 0xff1626,
     accentHex: '#ff4b3e',
   },
-  hunter: {
+  medium: {
     phase: 3,
     name: 'APEX SENTINEL',
     minScore: 0,
@@ -205,9 +205,9 @@ export const STORY_STAGE2_CONFIGS: Record<Difficulty, ThreatPhaseConfig> = {
     eyeColor: 0xff0d34,
     accentHex: '#ff2442',
   },
-  architect: {
+  hard: {
     phase: 4,
-    name: 'APEX ARCHITECT',
+    name: 'APEX SENTINEL',
     minScore: 0,
     sentinelSpeed: 2.38,
     reactionDelay: 0.08,

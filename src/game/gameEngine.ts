@@ -13,6 +13,7 @@ import {
 import { SoundEngine } from './audio';
 import {
   clamp,
+  computeEdgeJumpTargetX,
   createBallState,
   evaluateAutoBulletTime,
   solveBallisticShot,
@@ -95,7 +96,7 @@ export class GameEngine {
 
   private state: GamePhaseState = 'LOADING';
   private mode: GameMode = 'duel';
-  private difficulty: Difficulty = 'scout';
+  private difficulty: Difficulty = 'easy';
   private storyStage: StoryStage = 1;
   private stage2Unlocked = false;
   private canSkipCutscene = false;
@@ -113,6 +114,13 @@ export class GameEngine {
     vel: { x: 0, y: 0, z: 0 },
     smashCharge: 0,
   };
+  // Invisible second hitbox locked right to the player's true cursor position during rapid desyncs/edge-jumps
+  private ghostCursorPaddle: PaddleState = {
+    pos: { x: 0, y: TABLE.SURFACE_Y + 0.28, z: PLAYER_PADDLE.BASE_Z },
+    prevPos: { x: 0, y: TABLE.SURFACE_Y + 0.28, z: PLAYER_PADDLE.BASE_Z },
+    vel: { x: 0, y: 0, z: 0 },
+    smashCharge: 0,
+  };
 
   // Input state
   private pointerNormX = 0; // -1..1 (assisted mode)
@@ -120,6 +128,13 @@ export class GameEngine {
   private rawNdcX = 0; // exact [-1, 1] viewport NDC for true 1:1 ray projection
   private rawNdcY = 0;
   private oneToOneMode = true;
+  private cursorAnchorPos: { x: number; y: number; z: number } = {
+    x: 0,
+    y: TABLE.SURFACE_Y + 0.28,
+    z: PLAYER_PADDLE.BASE_Z,
+  };
+  private ghostJumpLatched = false;
+  private ghostDesyncTimer = 0;
   private isChargingSmash = false;
   private lungeTimer = 0;
   private keys = new Set<string>();
@@ -254,6 +269,10 @@ export class GameEngine {
     this.bulletTimeActive = false;
     this.bulletTimeRequested = false;
     this.autoBulletTimeLatched = false;
+    this.ghostJumpLatched = false;
+    this.ghostDesyncTimer = 0;
+    this.ghostCursorPaddle.prevPos = { ...this.playerPaddle.pos };
+    this.ghostCursorPaddle.pos = { ...this.playerPaddle.pos };
     this.maxPhaseReached = effectiveStage === 2 ? 2 : 1;
     this.winner = null;
     this.lastPointReason = '';
@@ -294,6 +313,9 @@ export class GameEngine {
       } else {
         this.state = this.ball.active ? 'RALLY' : 'SERVE';
       }
+      this.ghostJumpLatched = false;
+      this.ghostDesyncTimer = 0;
+      this.ghostCursorPaddle.prevPos = { ...this.ghostCursorPaddle.pos };
       this.lastFrameTime = performance.now();
       this.pushHud(true);
     }
@@ -598,6 +620,7 @@ export class GameEngine {
       if (sentinelCtrl) {
         const events = stepPhysics(this.ball, simDt, {
           playerPaddle: this.playerPaddle,
+          ghostPlayerPaddle: this.ghostCursorPaddle,
           sentinelPaddle: sentinelCtrl.paddleState,
           sentinelReturnFn: (b, hitPos) =>
             sentinelCtrl.planReturnShot(b, hitPos, phase, this.rally),
@@ -699,7 +722,12 @@ export class GameEngine {
     }
 
     // Sync 3D meshes and render frame
-    this.sceneManager.syncPlayerPaddle(this.playerPaddle, this.bulletTimeActive);
+    this.sceneManager.syncPlayerPaddle(this.playerPaddle, this.bulletTimeActive, {
+      anchor: this.cursorAnchorPos,
+      active: this.ghostJumpLatched,
+      desyncDuration: this.ghostDesyncTimer,
+      visible: this.state === 'RALLY' || this.state === 'POINT_PAUSE',
+    });
     this.sceneManager.syncBall(this.ball, simDt);
     this.sceneManager.updateVisuals(simDt, realDt, this.ball, this.playerPaddle, {
       isMenu: this.state === 'MENU',
@@ -787,7 +815,7 @@ export class GameEngine {
         this.winner = outcome.winner;
         if (this.winner === 'player') {
           const diffBonus =
-            this.difficulty === 'architect' ? 4000 : this.difficulty === 'hunter' ? 2500 : 1400;
+            this.difficulty === 'hard' ? 4000 : this.difficulty === 'medium' ? 2500 : 1400;
           const marginBonus = (this.playerPoints - this.sentinelPoints) * 320;
           this.score += diffBonus + marginBonus;
         }
@@ -891,17 +919,70 @@ export class GameEngine {
       }
     }
 
-    const followRate = this.oneToOneMode ? 44 : 26;
-    const smooth = 1 - Math.exp(-followRate * dt);
-    const nextX = this.playerPaddle.pos.x + (targetX - this.playerPaddle.pos.x) * smooth;
-    const nextY = this.playerPaddle.pos.y + (targetY - this.playerPaddle.pos.y) * smooth;
-    const nextZ = this.playerPaddle.pos.z + (targetZ - this.playerPaddle.pos.z) * smooth;
+    // Record the player's true un-jumped cursor anchor & update the invisible second ghost hitbox!
+    this.cursorAnchorPos.x = targetX;
+    this.cursorAnchorPos.y = targetY;
+    this.cursorAnchorPos.z = targetZ;
+
+    this.ghostCursorPaddle.prevPos.x = this.ghostCursorPaddle.pos.x;
+    this.ghostCursorPaddle.prevPos.y = this.ghostCursorPaddle.pos.y;
+    this.ghostCursorPaddle.prevPos.z = this.ghostCursorPaddle.pos.z;
+    this.ghostCursorPaddle.pos.x = targetX;
+    this.ghostCursorPaddle.pos.y = targetY;
+    this.ghostCursorPaddle.pos.z = targetZ;
+    this.ghostCursorPaddle.smashCharge = this.playerPaddle.smashCharge;
+    if (dt > 1e-4) {
+      const gvx = clamp((targetX - this.ghostCursorPaddle.prevPos.x) / dt, -5.2, 5.2);
+      const gvy = clamp((targetY - this.ghostCursorPaddle.prevPos.y) / dt, -5.2, 5.2);
+      const gvz = clamp((targetZ - this.ghostCursorPaddle.prevPos.z) / dt, -5.2, 5.2);
+      this.ghostCursorPaddle.vel.x = this.ghostCursorPaddle.vel.x * 0.45 + gvx * 0.55;
+      this.ghostCursorPaddle.vel.y = this.ghostCursorPaddle.vel.y * 0.45 + gvy * 0.55;
+      this.ghostCursorPaddle.vel.z = this.ghostCursorPaddle.vel.z * 0.45 + gvz * 0.55;
+    }
+
+    // Edge-reach horizontal auto-jump: when near screen edge + vertically aligned, jump to catch wide/off-screen balls
+    let edgeJumping = false;
+    if (this.state === 'RALLY') {
+      const edgeRes = computeEdgeJumpTargetX({
+        ball: this.ball,
+        rawNdcX: this.rawNdcX,
+        baseTargetX: targetX,
+        baseTargetY: targetY,
+        targetZ,
+      });
+      if (edgeRes.active) {
+        targetX = edgeRes.targetX;
+        edgeJumping = true;
+      }
+    }
+    if (edgeJumping) {
+      this.ghostJumpLatched = true;
+      this.ghostDesyncTimer += dt;
+    } else if (
+      this.state !== 'RALLY' ||
+      Math.abs(this.playerPaddle.pos.x - this.cursorAnchorPos.x) <= 0.1
+    ) {
+      this.ghostJumpLatched = false;
+      this.ghostDesyncTimer = 0;
+    } else if (this.ghostJumpLatched) {
+      this.ghostDesyncTimer += dt;
+    }
+
+    const followRateX = edgeJumping ? 68 : this.oneToOneMode ? 44 : 26;
+    const followRateYZ = this.oneToOneMode ? 44 : 26;
+    const smoothX = 1 - Math.exp(-followRateX * dt);
+    const smoothYZ = 1 - Math.exp(-followRateYZ * dt);
+    const nextX = this.playerPaddle.pos.x + (targetX - this.playerPaddle.pos.x) * smoothX;
+    const nextY = this.playerPaddle.pos.y + (targetY - this.playerPaddle.pos.y) * smoothYZ;
+    const nextZ = this.playerPaddle.pos.z + (targetZ - this.playerPaddle.pos.z) * smoothYZ;
 
     if (dt > 1e-4) {
       const rawVx = (nextX - this.playerPaddle.pos.x) / dt;
       const rawVy = (nextY - this.playerPaddle.pos.y) / dt;
       const rawVz = (nextZ - this.playerPaddle.pos.z) / dt;
-      this.playerPaddle.vel.x = this.playerPaddle.vel.x * 0.45 + rawVx * 0.55;
+      // Keep artificial auto-jump speed from triggering an overswing fault so rescue shots land cleanly on-table
+      const effectiveVx = edgeJumping ? clamp(rawVx, -2.2, 2.2) : rawVx;
+      this.playerPaddle.vel.x = this.playerPaddle.vel.x * 0.45 + effectiveVx * 0.55;
       this.playerPaddle.vel.y = this.playerPaddle.vel.y * 0.45 + rawVy * 0.55;
       this.playerPaddle.vel.z = this.playerPaddle.vel.z * 0.45 + rawVz * 0.55;
     }

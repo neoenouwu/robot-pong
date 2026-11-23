@@ -5,6 +5,7 @@ import path from 'node:path';
 import * as THREE from 'three';
 import {
   checkSweptPaddleHit,
+  computeEdgeJumpTargetX,
   createBallState,
   evaluateAutoBulletTime,
   predictBallAtZ,
@@ -12,7 +13,7 @@ import {
   stepPhysics,
   type PaddleState,
 } from '../src/game/physics';
-import { projectNdcToZPlane } from '../src/game/sceneManager';
+import { computeGhostPaddleOpacity, projectNdcToZPlane } from '../src/game/sceneManager';
 import { computeFloatingPopupOrigin } from '../src/game/matrixEffects';
 import { evaluateStoryMatchOutcome } from '../src/game/gameEngine';
 import { DEFAULT_ROBOT_SKIN_ID, getRobotSkin, ROBOT_SKINS } from '../src/game/robotSkins';
@@ -306,9 +307,9 @@ describe('3D Table Tennis Physics Engine', () => {
     expect(stacked.y).toBeGreaterThan(rightPaddle.y);
   });
 
-  it('keeps MK-I SCOUT & Stage 2 APEX genuinely beatable via cross-court smashes while still returning straight shots', () => {
+  it('keeps MK-I EASY & Stage 2 APEX genuinely beatable via cross-court smashes while still returning straight shots', () => {
     const simulateShot = (
-      phaseCfg: typeof DUEL_DIFFICULTIES.scout,
+      phaseCfg: typeof DUEL_DIFFICULTIES.easy,
       sentinelStartX: number,
       targetX: number,
       flightTime: number,
@@ -345,14 +346,138 @@ describe('3D Table Tennis Physics Engine', () => {
       return 'other';
     };
 
-    // 1) Straight medium shot right at MK-I SCOUT is cleanly returned so rallies stay fun
-    expect(simulateShot(DUEL_DIFFICULTIES.scout, 0.0, 0.02, 0.62, false)).toBe('returned');
+    // 1) Straight medium shot right at MK-I EASY is cleanly returned so rallies stay fun
+    expect(simulateShot(DUEL_DIFFICULTIES.easy, 0.0, 0.02, 0.62, false)).toBe('returned');
 
-    // 2) Cross-court Power Smash away from MK-I SCOUT's corner cleanly scores a winner!
-    expect(simulateShot(DUEL_DIFFICULTIES.scout, -0.58, 0.62, 0.42, true)).toBe('player_winner');
+    // 2) Cross-court Power Smash away from MK-I EASY's corner cleanly scores a winner!
+    expect(simulateShot(DUEL_DIFFICULTIES.easy, -0.58, 0.62, 0.42, true)).toBe('player_winner');
 
-    // 3) Cross-court Power Smash also beats Stage 2 APEX SENTINEL (scout tier)!
-    expect(simulateShot(STORY_STAGE2_CONFIGS.scout, -0.58, 0.64, 0.38, true)).toBe('player_winner');
+    // 3) Cross-court Power Smash also beats Stage 2 APEX SENTINEL (easy tier)!
+    expect(simulateShot(STORY_STAGE2_CONFIGS.easy, -0.58, 0.64, 0.38, true)).toBe('player_winner');
+  });
+
+  it('auto-jumps horizontally to catch wide off-screen bounced shots when near the screen edge and vertically aligned', () => {
+    const ball = createBallState();
+    // Wide ball that ALREADY bounced on player's side and is angling off-screen to x = +1.55m
+    ball.pos = { x: 1.05, y: 1.08, z: PLAYER_PADDLE.BASE_Z - 0.8 };
+    ball.vel = { x: 2.5, y: 0.4, z: 4.0 };
+    ball.active = true;
+    ball.lastHitBy = 'sentinel';
+    ball.bouncesOnPlayer = 1;
+
+    // 1) Cursor near right edge + vertically aligned -> jumps horizontally straight onto predicted X (~1.53m)!
+    const jump = computeEdgeJumpTargetX({
+      ball,
+      rawNdcX: 0.88,
+      baseTargetX: 1.25,
+      baseTargetY: 1.05,
+      targetZ: PLAYER_PADDLE.BASE_Z,
+    });
+    expect(jump.active).toBe(true);
+    expect(jump.targetX).toBeGreaterThan(1.38);
+    expect(jump.targetX).toBeLessThan(1.75);
+
+    // 2) Cursor near right edge, but vertical height is way off -> does NOT jump!
+    const badHeight = computeEdgeJumpTargetX({
+      ball,
+      rawNdcX: 0.88,
+      baseTargetX: 1.25,
+      baseTargetY: 1.75,
+      targetZ: PLAYER_PADDLE.BASE_Z,
+    });
+    expect(badHeight.active).toBe(false);
+
+    // 3) Cursor near middle of screen -> does NOT jump!
+    const centerCursor = computeEdgeJumpTargetX({
+      ball,
+      rawNdcX: 0.25,
+      baseTargetX: 0.3,
+      baseTargetY: 1.05,
+      targetZ: PLAYER_PADDLE.BASE_Z,
+    });
+    expect(centerCursor.active).toBe(false);
+
+    // 4) Cursor on opposite (left) edge -> does NOT jump!
+    const wrongEdge = computeEdgeJumpTargetX({
+      ball,
+      rawNdcX: -0.9,
+      baseTargetX: -1.25,
+      baseTargetY: 1.05,
+      targetZ: PLAYER_PADDLE.BASE_Z,
+    });
+    expect(wrongEdge.active).toBe(false);
+
+    // 5) Unbounced Sentinel out-of-bounds fault flying wide (bouncesOnPlayer = 0) -> does NOT jump!
+    ball.bouncesOnPlayer = 0;
+    const outFault = computeEdgeJumpTargetX({
+      ball,
+      rawNdcX: 0.88,
+      baseTargetX: 1.25,
+      baseTargetY: 1.05,
+      targetZ: PLAYER_PADDLE.BASE_Z,
+    });
+    expect(outFault.active).toBe(false);
+
+    // 6) Striking a wide off-screen bounced ball at x = +1.55m returns cleanly onto Sentinel's table half!
+    ball.bouncesOnPlayer = 1;
+    const edgePaddle = makePaddle(jump.targetX, 1.05, PLAYER_PADDLE.BASE_Z);
+    edgePaddle.vel.x = 2.0; // clamped during auto-jump
+    const farSentinel = makePaddle(-0.95, 1.0, SENTINEL.PADDLE_BASE_Z);
+    let hitByPlayer = false;
+    let landedOnSentinel = false;
+    for (let i = 0; i < 120; i++) {
+      const evs = stepPhysics(ball, 1 / 60, {
+        playerPaddle: edgePaddle,
+        sentinelPaddle: farSentinel,
+      });
+      for (const ev of evs) {
+        if (ev.type === 'paddle_hit' && ev.by === 'player') hitByPlayer = true;
+        if (ev.type === 'table_bounce' && ev.side === 'sentinel') landedOnSentinel = true;
+      }
+      if (landedOnSentinel) break;
+    }
+    expect(hitByPlayer).toBe(true);
+    expect(landedOnSentinel).toBe(true);
+  });
+
+  it('hides the ghost visual on brief non-edge desyncs, shows clearly without glow when flicked to edge or sustained, and lets the invisible ghost hitbox catch balls', () => {
+    const anchor = { x: 0.85, y: 1.05, z: PLAYER_PADDLE.BASE_Z };
+    // 1) Normal rapid swipe lag (active=false): completely hidden
+    expect(
+      computeGhostPaddleOpacity({ x: 1.45, y: 1.05, z: PLAYER_PADDLE.BASE_Z }, anchor, false, 0.5)
+    ).toBe(0);
+    // 2) Brief non-edge desync (0.05s < 0.10s, x=1.05 <= 1.12): stays invisible!
+    expect(
+      computeGhostPaddleOpacity({ x: 1.05, y: 1.05, z: PLAYER_PADDLE.BASE_Z }, anchor, true, 0.05)
+    ).toBe(0);
+    // 3) Paddle flicked to/off screen edge (x=1.45 > 1.12): clearly visible at non-glowing max opacity (0.46)
+    expect(
+      computeGhostPaddleOpacity({ x: 1.45, y: 1.05, z: PLAYER_PADDLE.BASE_Z }, anchor, true, 0.03)
+    ).toBeCloseTo(0.46, 2);
+    // 4) Sustained edge-jump desync (0.25s >= 0.10s, sep=0.20m): clearly visible (~0.25)
+    expect(
+      computeGhostPaddleOpacity({ x: 1.05, y: 1.05, z: PLAYER_PADDLE.BASE_Z }, anchor, true, 0.25)
+    ).toBeGreaterThan(0.2);
+
+    // 5) Invisible ghost second hitbox catches a ball at cursor position even while primary paddle is desynced!
+    const ball = createBallState();
+    ball.pos = { x: 0.42, y: 1.05, z: PLAYER_PADDLE.BASE_Z - 0.08 };
+    ball.vel = { x: 0, y: 0.2, z: 6.5 };
+    ball.active = true;
+    ball.lastHitBy = 'sentinel';
+
+    const laggingPrimaryPaddle = makePaddle(-0.3, 1.05, PLAYER_PADDLE.BASE_Z); // still catching up!
+    const invisibleGhostCursor = makePaddle(0.42, 1.05, PLAYER_PADDLE.BASE_Z); // right on cursor!
+    const farSentinel = makePaddle(-0.9, 1.0, SENTINEL.PADDLE_BASE_Z);
+
+    const evs = stepPhysics(ball, 1 / 60, {
+      playerPaddle: laggingPrimaryPaddle,
+      ghostPlayerPaddle: invisibleGhostCursor,
+      sentinelPaddle: farSentinel,
+    });
+    const playerHit = evs.find((e) => e.type === 'paddle_hit' && e.by === 'player');
+    expect(playerHit).toBeDefined();
+    expect(ball.vel.z).toBeLessThan(0); // returned cleanly back toward Sentinel!
   });
 });
 
@@ -371,16 +496,16 @@ describe('Leaderboard Persistence & Validation', () => {
     expect(badMode.ok).toBe(false);
   });
 
-  it('persists, ranks, handles concurrent submits, and recovers from corrupt JSON', async () => {
+  it('starts empty of generated scores, persists & ranks personal scores, strips legacy seeds, and recovers from corrupt JSON', async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sentinel-lb-'));
     const dataFile = path.join(tmpDir, 'leaderboard.json');
 
     try {
       const store = new LeaderboardStore(dataFile);
       const initial = await store.list('arcade', 10);
-      expect(initial.entries.length).toBeGreaterThanOrEqual(4);
+      expect(initial.entries.length).toBe(0);
 
-      // Submit concurrent high scores
+      // Submit concurrent personal high scores
       const [r1, r2] = await Promise.all([
         store.submit({ name: 'ACE_ONE', mode: 'arcade', score: 99000, bestRally: 42, maxPhase: 4 }),
         store.submit({ name: 'ACE_TWO', mode: 'arcade', score: 55000, bestRally: 31, maxPhase: 4 }),
@@ -391,11 +516,30 @@ describe('Leaderboard Persistence & Validation', () => {
       expect(r2.ok).toBe(true);
       expect(r2.rank).toBe(2);
 
-      // Corrupt the JSON file intentionally and verify automatic recovery
+      // Verify legacy generated seed-* entries are stripped while preserving real personal scores
+      await fs.writeFile(
+        dataFile,
+        JSON.stringify({
+          version: 1,
+          entries: {
+            arcade: [
+              { id: 'seed-arc-1', name: 'FAKE_BOT', mode: 'arcade', score: 999999, createdAt: '2026-01-01T00:00:00Z' },
+              { id: 'real-1', name: 'NYAA', mode: 'arcade', score: 7670, createdAt: '2026-11-23T04:37:34Z' },
+            ],
+            duel: [],
+          },
+        }),
+        'utf8'
+      );
+      const cleaned = await store.list('arcade', 10);
+      expect(cleaned.entries.length).toBe(1);
+      expect(cleaned.entries[0].name).toBe('NYAA');
+
+      // Corrupt the JSON file intentionally and verify automatic recovery to clean empty list
       await fs.writeFile(dataFile, '{corrupted_json!!!', 'utf8');
       const recovered = await store.list('arcade', 10);
       expect(recovered.recovered).toBe(true);
-      expect(recovered.entries.length).toBeGreaterThanOrEqual(4);
+      expect(recovered.entries.length).toBe(0);
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }

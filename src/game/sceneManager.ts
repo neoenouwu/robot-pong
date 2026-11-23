@@ -94,6 +94,30 @@ export function projectNdcToZPlane(
   };
 }
 
+export function computeGhostPaddleOpacity(
+  paddlePos: { x: number; y: number; z: number },
+  cursorAnchor: { x: number; y: number; z: number },
+  active: boolean,
+  desyncDuration = 0
+): number {
+  if (!active) return 0;
+  const sep = Math.hypot(
+    paddlePos.x - cursorAnchor.x,
+    paddlePos.y - cursorAnchor.y
+  );
+  if (sep <= 0.1) return 0;
+
+  // Suppress tiny micro-desyncs unless the paddle jumped near/past the edge or stayed desynced >= 0.10s
+  const flickedToEdge = Math.abs(paddlePos.x) > 1.12;
+  if (!flickedToEdge && desyncDuration < 0.1) {
+    return 0;
+  }
+
+  const timeFade = flickedToEdge ? 1 : Math.min(1, (desyncDuration - 0.1) / 0.1);
+  const sepFade = Math.min(1, (sep - 0.1) / 0.18);
+  return timeFade * sepFade * 0.46;
+}
+
 export class SceneManager {
   public readonly container: HTMLElement;
   public readonly renderer: THREE.WebGLRenderer;
@@ -106,6 +130,11 @@ export class SceneManager {
 
   public sentinelController: SentinelController | null = null;
   public playerPaddleObj: THREE.Object3D | null = null;
+  private ghostPaddleObj: THREE.Object3D | null = null;
+  private ghostPaddleMat: THREE.MeshBasicMaterial | null = null;
+  private ghostTetherLine: THREE.Line | null = null;
+  private ghostTetherMat: THREE.LineBasicMaterial | null = null;
+  private ghostTetherPositions = new Float32Array(6);
   public sentinelPaddleObj: THREE.Object3D | null = null;
   public ballObj: THREE.Object3D | null = null;
   public readonly vfx: GameplayVFX;
@@ -415,6 +444,49 @@ export class SceneManager {
     playerPaddle.rotation.y = Math.PI;
     playerPaddle.scale.setScalar(1.12);
 
+    // Crisp, calm non-glowing VR ghost silhouette + outline rim + hairline tether (below bloom threshold)
+    const ghostPaddle = loaded.paddle.clone(true);
+    const ghostMat = new THREE.MeshBasicMaterial({
+      color: 0x9fd0c4,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.NormalBlending,
+    });
+    ghostPaddle.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) {
+        const mesh = obj as THREE.Mesh;
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
+        mesh.material = ghostMat;
+      }
+    });
+    // Subtle rim outline ring around blade so the ghost stays readable over dark floor/walls without glowing
+    const rimMesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.075, 0.083, 32),
+      ghostMat
+    );
+    rimMesh.position.set(0, 0.004, -0.009);
+    rimMesh.rotation.y = Math.PI;
+    ghostPaddle.add(rimMesh);
+
+    ghostPaddle.rotation.y = Math.PI;
+    ghostPaddle.scale.setScalar(1.12);
+    ghostPaddle.visible = false;
+
+    const tetherGeo = new THREE.BufferGeometry();
+    tetherGeo.setAttribute('position', new THREE.BufferAttribute(this.ghostTetherPositions, 3));
+    const tetherMat = new THREE.LineBasicMaterial({
+      color: 0x8ec4b6,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.NormalBlending,
+      depthWrite: false,
+    });
+    const tetherLine = new THREE.Line(tetherGeo, tetherMat);
+    tetherLine.frustumCulled = false;
+    tetherLine.visible = false;
+
     // Slight visual polish on ball so it gleams brightly against dark shadows
     ball.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
@@ -432,6 +504,8 @@ export class SceneManager {
     this.scene.add(sentinel);
     this.scene.add(sentinelPaddle);
     this.scene.add(playerPaddle);
+    this.scene.add(ghostPaddle);
+    this.scene.add(tetherLine);
     this.scene.add(ball);
 
     this.sentinelSkinCache.set(skin.id, sentinel);
@@ -439,6 +513,10 @@ export class SceneManager {
     this.activeSkinId = skin.id;
     this.sentinelPaddleObj = sentinelPaddle;
     this.playerPaddleObj = playerPaddle;
+    this.ghostPaddleObj = ghostPaddle;
+    this.ghostPaddleMat = ghostMat;
+    this.ghostTetherLine = tetherLine;
+    this.ghostTetherMat = tetherMat;
     this.ballObj = ball;
     this.sentinelController = new SentinelController(
       sentinel,
@@ -676,6 +754,8 @@ export class SceneManager {
     this.cutsceneActive = true;
     if (this.ballObj) this.ballObj.visible = false;
     if (this.playerPaddleObj) this.playerPaddleObj.visible = false;
+    if (this.ghostPaddleObj) this.ghostPaddleObj.visible = false;
+    if (this.ghostTetherLine) this.ghostTetherLine.visible = false;
     this.cutsceneRumbleFired = false;
     this.cutsceneCrushFired = false;
     this.cutsceneExpandFired = false;
@@ -924,7 +1004,16 @@ export class SceneManager {
     await this.setEnvironmentStage(2);
   }
 
-  public syncPlayerPaddle(paddle: PaddleState, bulletTime: boolean): void {
+  public syncPlayerPaddle(
+    paddle: PaddleState,
+    bulletTime: boolean,
+    ghost?: {
+      anchor: { x: number; y: number; z: number };
+      active: boolean;
+      desyncDuration: number;
+      visible: boolean;
+    }
+  ): void {
     if (!this.playerPaddleObj) return;
     this.playerPaddleObj.position.set(paddle.pos.x, paddle.pos.y, paddle.pos.z);
 
@@ -937,6 +1026,40 @@ export class SceneManager {
     // Subtle scale pop when charging power smash or in Bullet Time
     const s = 1.12 + paddle.smashCharge * 0.1 + (bulletTime ? 0.04 : 0);
     this.playerPaddleObj.scale.setScalar(s);
+
+    // Subtle muted VR ghost silhouette + faint tether (only on off-screen or sustained edge-jumps)
+    if (this.ghostPaddleObj && this.ghostPaddleMat && this.ghostTetherLine && this.ghostTetherMat) {
+      const opacity =
+        ghost && ghost.visible && !this.cutsceneActive
+          ? computeGhostPaddleOpacity(paddle.pos, ghost.anchor, ghost.active, ghost.desyncDuration)
+          : 0;
+
+      if (opacity > 0.005 && ghost) {
+        this.ghostPaddleObj.visible = true;
+        this.ghostPaddleObj.position.set(ghost.anchor.x, ghost.anchor.y, ghost.anchor.z);
+        this.ghostPaddleObj.rotation.set(
+          -0.18,
+          Math.PI + ghost.anchor.x * 0.24,
+          -ghost.anchor.x * 0.42
+        );
+        this.ghostPaddleObj.scale.setScalar(1.06);
+        this.ghostPaddleMat.opacity = opacity;
+
+        this.ghostTetherPositions[0] = ghost.anchor.x;
+        this.ghostTetherPositions[1] = ghost.anchor.y;
+        this.ghostTetherPositions[2] = ghost.anchor.z;
+        this.ghostTetherPositions[3] = paddle.pos.x;
+        this.ghostTetherPositions[4] = paddle.pos.y;
+        this.ghostTetherPositions[5] = paddle.pos.z;
+        (this.ghostTetherLine.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate =
+          true;
+        this.ghostTetherMat.opacity = opacity * 0.85;
+        this.ghostTetherLine.visible = true;
+      } else {
+        this.ghostPaddleObj.visible = false;
+        this.ghostTetherLine.visible = false;
+      }
+    }
   }
 
   public syncBall(ball: BallState, dt: number): void {
@@ -1004,13 +1127,14 @@ export class SceneManager {
       );
       this.camera.lookAt(0, 1.02, -1.45);
     } else {
-      const targetCamX = playerPaddle.pos.x * 0.22 + shakeX;
+      const clampedPadX = Math.max(-1.45, Math.min(1.45, playerPaddle.pos.x));
+      const targetCamX = clampedPadX * 0.22 + shakeX;
       const targetCamY = (opts.bulletTime ? 1.54 : 1.66) + shakeY;
       const targetCamZ = opts.bulletTime ? 2.38 : 2.56;
       this.camera.position.x += (targetCamX - this.camera.position.x) * Math.min(1, realDt * 6.5);
       this.camera.position.y += (targetCamY - this.camera.position.y) * Math.min(1, realDt * 6.5);
       this.camera.position.z += (targetCamZ - this.camera.position.z) * Math.min(1, realDt * 6.5);
-      this.camera.lookAt(playerPaddle.pos.x * 0.12, TABLE.SURFACE_Y + 0.34, -0.95);
+      this.camera.lookAt(clampedPadX * 0.12, TABLE.SURFACE_Y + 0.34, -0.95);
     }
 
     if (this.bloomPass) {
@@ -1040,6 +1164,9 @@ export class SceneManager {
   public dispose(): void {
     window.removeEventListener('resize', this.boundResize);
     this.vfx.floatingText.dispose();
+    this.ghostPaddleMat?.dispose();
+    this.ghostTetherMat?.dispose();
+    this.ghostTetherLine?.geometry.dispose();
     this.renderer.dispose();
   }
 }

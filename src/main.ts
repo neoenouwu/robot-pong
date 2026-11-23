@@ -36,10 +36,9 @@ class SentinelPongApp {
   private engine: GameEngine | null = null;
 
   private selectedMode: GameMode = 'duel';
-  private selectedDifficulty: Difficulty = 'scout';
+  private selectedDifficulty: Difficulty = 'easy';
   private selectedStoryStage: StoryStage = 1;
   private stage2Unlocked = false;
-  private activeLbTab: GameMode = 'duel';
   private bloomOn = true;
   private lastSnapshot: HudSnapshot | null = null;
   private hasSubmittedRun = false;
@@ -60,7 +59,6 @@ class SentinelPongApp {
   private readonly screenMenu = byId<HTMLDivElement>('screen-menu');
   private readonly screenPause = byId<HTMLDivElement>('screen-pause');
   private readonly screenGameOver = byId<HTMLDivElement>('screen-gameover');
-  private readonly screenLeaderboard = byId<HTMLDivElement>('screen-leaderboard');
   private readonly screenContextLost = byId<HTMLDivElement>('screen-context-lost');
 
   private readonly hudEl = byId<HTMLDivElement>('hud');
@@ -91,8 +89,6 @@ class SentinelPongApp {
   private readonly btnRetryStage2 = byId<HTMLButtonElement>('btn-retry-stage2');
   private readonly menuLbList = byId<HTMLDivElement>('menu-lb-list');
   private readonly previewSourceBadge = byId<HTMLSpanElement>('preview-source-badge');
-  private readonly modalSourceBadge = byId<HTMLSpanElement>('modal-source-badge');
-  private readonly lbTableBody = byId<HTMLTableSectionElement>('lb-table-body');
 
   private readonly goEyebrow = byId<HTMLDivElement>('go-eyebrow');
   private readonly goTitle = byId<HTMLHeadingElement>('go-title');
@@ -156,7 +152,7 @@ class SentinelPongApp {
     // Story difficulty buttons
     document.querySelectorAll<HTMLButtonElement>('.diff-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        this.selectedDifficulty = (btn.dataset.diff as Difficulty) || 'scout';
+        this.selectedDifficulty = (btn.dataset.diff as Difficulty) || 'easy';
         document.querySelectorAll('.diff-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
       });
@@ -179,23 +175,6 @@ class SentinelPongApp {
       const startStage: StoryStage =
         this.selectedMode === 'duel' && this.stage2Unlocked ? this.selectedStoryStage : 1;
       this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty, startStage);
-    });
-
-    byId<HTMLButtonElement>('btn-open-leaderboard').addEventListener('click', () => {
-      this.activeLbTab = this.selectedMode;
-      this.openLeaderboardModal();
-    });
-
-    byId<HTMLButtonElement>('btn-close-leaderboard').addEventListener('click', () => {
-      this.screenLeaderboard.classList.add('hidden');
-    });
-
-    document.querySelectorAll<HTMLButtonElement>('.tab-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.activeLbTab = (btn.dataset.tab as GameMode) || 'arcade';
-        this.syncLeaderboardTabs();
-        void this.loadLeaderboardModal(this.activeLbTab);
-      });
     });
 
     // HUD controls
@@ -428,29 +407,24 @@ class SentinelPongApp {
   private populateGameOver(snap: HudSnapshot): void {
     this.submitFeedback.classList.add('hidden');
     this.btnSubmitScore.disabled = false;
-    this.btnSubmitScore.textContent = 'SUBMIT SCORE';
+    this.btnSubmitScore.textContent = 'SAVE SCORE';
     this.hasSubmittedRun = false;
+    this.goEyebrow.classList.add('hidden');
 
     if (snap.mode === 'duel') {
       const won = snap.winner === 'player';
       const isStage2 = snap.storyStage === 2;
-      this.goEyebrow.textContent = won
-        ? 'MACHINE CITY CONQUERED'
-        : isStage2
-          ? 'STAGE 2 TERMINATED'
-          : 'MATCH TERMINATED';
       this.goTitle.textContent = won
-        ? 'APEX SENTINEL DEFEATED'
+        ? 'VICTORY'
         : isStage2
-          ? 'APEX SENTINEL PREVAILS'
-          : 'SENTINEL PREVAILS';
+          ? 'STAGE 2 DEFEAT'
+          : 'DEFEAT';
       this.goTitle.style.color = won ? 'var(--emerald)' : 'var(--crimson)';
-      this.goFourthLabel.textContent = isStage2 ? 'STAGE 2 SCORE' : 'MATCH SCORE';
+      this.goFourthLabel.textContent = isStage2 ? 'STAGE 2' : 'SCORE';
       this.goFourthVal.textContent = `${snap.playerPoints}-${snap.sentinelPoints}`;
       this.btnRetryStage2.classList.toggle('hidden', !(isStage2 && !won && this.stage2Unlocked));
     } else {
-      this.goEyebrow.textContent = 'OVERDRIVE RUN COMPLETE';
-      this.goTitle.textContent = 'SYSTEM BREACH';
+      this.goTitle.textContent = 'GAME OVER';
       this.goTitle.style.color = 'var(--crimson)';
       this.goFourthLabel.textContent = 'MAX PHASE';
       this.goFourthVal.textContent = `${snap.maxPhaseReached}`;
@@ -468,12 +442,12 @@ class SentinelPongApp {
     if (!this.lastSnapshot || this.hasSubmittedRun) return;
     const rawName = this.inputCallsign.value.trim();
     if (!rawName) {
-      this.showSubmitFeedback('Enter a callsign (1–16 letters or numbers).', true);
+      this.showSubmitFeedback('Enter a name (1–16 letters or numbers).', true);
       return;
     }
 
     this.btnSubmitScore.disabled = true;
-    this.btnSubmitScore.textContent = 'UPLOADING...';
+    this.btnSubmitScore.textContent = 'SAVING...';
 
     const snap = this.lastSnapshot;
     const res = await submitLeaderboardScore({
@@ -489,8 +463,8 @@ class SentinelPongApp {
 
     if (!res.ok) {
       this.btnSubmitScore.disabled = false;
-      this.btnSubmitScore.textContent = 'SUBMIT SCORE';
-      this.showSubmitFeedback(res.error || 'Submission failed.', true);
+      this.btnSubmitScore.textContent = 'SAVE SCORE';
+      this.showSubmitFeedback(res.error || 'Could not save score.', true);
       return;
     }
 
@@ -501,11 +475,11 @@ class SentinelPongApp {
       this.inputCallsign.value = res.entry.name;
     }
 
-    const rankText = res.rank ? `RANK #${res.rank}` : 'LOGGED';
-    const recordTag = res.isTopRecord ? ' // NEW #1 RECORD!' : '';
-    const cacheTag = res.source === 'local' ? ' (LOCAL CACHE)' : '';
-    this.showSubmitFeedback(`SCORE UPLOADED — ${rankText}${recordTag}${cacheTag}`, false);
-    this.btnSubmitScore.textContent = 'UPLOADED';
+    const rankText = res.rank ? `#${res.rank}` : 'SAVED';
+    const recordTag = res.isTopRecord ? ' (NEW BEST)' : '';
+    const cacheTag = res.source === 'local' ? ' [LOCAL]' : '';
+    this.showSubmitFeedback(`SAVED — ${rankText}${recordTag}${cacheTag}`, false);
+    this.btnSubmitScore.textContent = 'SAVED';
 
     if (res.entries) {
       this.renderMiniLeaderboard(this.goLbPreview, res.entries.slice(0, 20), this.lastSubmittedId);
@@ -528,7 +502,7 @@ class SentinelPongApp {
     highlightId: string | null = null
   ): void {
     if (entries.length === 0) {
-      container.innerHTML = '<div class="muted-copy">No operators recorded yet.</div>';
+      container.innerHTML = '<div class="muted-copy">No personal scores yet.</div>';
       return;
     }
     container.innerHTML = entries
@@ -546,8 +520,10 @@ class SentinelPongApp {
 
   private async refreshMenuLeaderboard(mode: GameMode): Promise<void> {
     const res = await fetchLeaderboard(mode, 6);
-    this.previewSourceBadge.textContent = res.source === 'server' ? 'LIVE' : 'LOCAL';
-    this.previewSourceBadge.classList.toggle('local', res.source !== 'server');
+    const isOffline = res.source !== 'server';
+    this.previewSourceBadge.textContent = 'LOCAL';
+    this.previewSourceBadge.classList.toggle('local', isOffline);
+    this.previewSourceBadge.classList.toggle('hidden', !isOffline);
     this.renderMiniLeaderboard(this.menuLbList, res.entries);
   }
 
@@ -556,48 +532,6 @@ class SentinelPongApp {
     this.renderMiniLeaderboard(this.goLbPreview, res.entries, this.lastSubmittedId);
     const hi = this.goLbPreview.querySelector('.highlight');
     hi?.scrollIntoView({ block: 'nearest' });
-  }
-
-  private openLeaderboardModal(): void {
-    this.syncLeaderboardTabs();
-    this.screenLeaderboard.classList.remove('hidden');
-    void this.loadLeaderboardModal(this.activeLbTab);
-  }
-
-  private syncLeaderboardTabs(): void {
-    document.querySelectorAll<HTMLButtonElement>('.tab-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.tab === this.activeLbTab);
-    });
-  }
-
-  private async loadLeaderboardModal(mode: GameMode): Promise<void> {
-    this.lbTableBody.innerHTML = '<tr><td colspan="5" class="muted-copy">Loading rankings...</td></tr>';
-    const res = await fetchLeaderboard(mode, 25);
-    this.modalSourceBadge.textContent = res.source === 'server' ? 'LIVE SERVER' : 'LOCAL CACHE';
-    this.modalSourceBadge.classList.toggle('local', res.source !== 'server');
-
-    if (res.entries.length === 0) {
-      this.lbTableBody.innerHTML = '<tr><td colspan="5" class="muted-copy">No records yet.</td></tr>';
-      return;
-    }
-
-    this.lbTableBody.innerHTML = res.entries
-      .map((entry, idx) => {
-        const detail =
-          entry.mode === 'duel'
-            ? `${entry.difficulty.toUpperCase()}${entry.matchScore ? ` (${entry.matchScore})` : ''}`
-            : `PHASE ${entry.maxPhase} • ${entry.perfectHits} PERF`;
-        return `
-          <tr>
-            <td>#${idx + 1}</td>
-            <td>${escapeHtml(entry.name)}</td>
-            <td>${entry.score.toLocaleString()}</td>
-            <td>${entry.bestRally}</td>
-            <td>${escapeHtml(detail)}</td>
-          </tr>
-        `;
-      })
-      .join('');
   }
 }
 

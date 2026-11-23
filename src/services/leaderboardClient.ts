@@ -43,78 +43,8 @@ export interface SubmitScoreResponse {
 const LOCAL_STORAGE_KEY = 'sentinel_pong_leaderboard_v1';
 
 const FALLBACK_SEEDS: Record<GameMode, LeaderboardEntry[]> = {
-  arcade: [
-    {
-      id: 'local-arc-1',
-      name: 'NEO_01',
-      mode: 'arcade',
-      score: 18450,
-      bestRally: 29,
-      maxPhase: 4,
-      perfectHits: 14,
-      difficulty: 'overdrive',
-      createdAt: '2026-11-18T08:15:00.000Z',
-    },
-    {
-      id: 'local-arc-2',
-      name: 'TRINITY',
-      mode: 'arcade',
-      score: 14200,
-      bestRally: 23,
-      maxPhase: 4,
-      perfectHits: 11,
-      difficulty: 'overdrive',
-      createdAt: '2026-11-19T14:40:00.000Z',
-    },
-    {
-      id: 'local-arc-3',
-      name: 'MORPHEUS',
-      mode: 'arcade',
-      score: 10850,
-      bestRally: 19,
-      maxPhase: 3,
-      perfectHits: 8,
-      difficulty: 'overdrive',
-      createdAt: '2026-11-20T03:22:00.000Z',
-    },
-    {
-      id: 'local-arc-4',
-      name: 'TANK',
-      mode: 'arcade',
-      score: 4950,
-      bestRally: 11,
-      maxPhase: 2,
-      perfectHits: 4,
-      difficulty: 'overdrive',
-      createdAt: '2026-11-21T11:30:00.000Z',
-    },
-  ],
-  duel: [
-    {
-      id: 'local-duel-1',
-      name: 'THE_ONE',
-      mode: 'duel',
-      score: 9850,
-      bestRally: 22,
-      maxPhase: 4,
-      perfectHits: 12,
-      difficulty: 'architect',
-      matchScore: '11-3',
-      createdAt: '2026-11-18T12:00:00.000Z',
-    },
-    {
-      id: 'local-duel-2',
-      name: 'SERAPH',
-      mode: 'duel',
-      score: 7900,
-      bestRally: 18,
-      maxPhase: 3,
-      perfectHits: 9,
-      difficulty: 'architect',
-      matchScore: '11-6',
-      createdAt: '2026-11-19T16:30:00.000Z',
-    },
-  ],
+  arcade: [],
+  duel: [],
 };
 
 function readLocalStore(): Record<GameMode, LeaderboardEntry[]> {
@@ -123,7 +53,18 @@ function readLocalStore(): Record<GameMode, LeaderboardEntry[]> {
     if (!raw) return structuredClone(FALLBACK_SEEDS);
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed?.arcade) && Array.isArray(parsed?.duel)) {
-      return parsed;
+      const stripFake = (list: LeaderboardEntry[]) =>
+        list.filter(
+          (e) =>
+            typeof e?.id !== 'string' ||
+            (!e.id.startsWith('local-arc-') &&
+              !e.id.startsWith('local-duel-') &&
+              !e.id.startsWith('seed-'))
+        );
+      return {
+        arcade: stripFake(parsed.arcade),
+        duel: stripFake(parsed.duel),
+      };
     }
   } catch {
     // Ignore storage quota or corrupt local JSON

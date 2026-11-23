@@ -8,126 +8,23 @@ export const MAX_ENTRIES_PER_MODE = 100;
 export const SEED_DATA = {
   version: 1,
   entries: {
-    arcade: [
-      {
-        id: 'seed-arc-1',
-        name: 'NEO_01',
-        mode: 'arcade',
-        score: 18450,
-        bestRally: 29,
-        maxPhase: 4,
-        perfectHits: 14,
-        difficulty: 'overdrive',
-        createdAt: '2026-11-18T08:15:00.000Z',
-      },
-      {
-        id: 'seed-arc-2',
-        name: 'TRINITY',
-        mode: 'arcade',
-        score: 14200,
-        bestRally: 23,
-        maxPhase: 4,
-        perfectHits: 11,
-        difficulty: 'overdrive',
-        createdAt: '2026-11-19T14:40:00.000Z',
-      },
-      {
-        id: 'seed-arc-3',
-        name: 'MORPHEUS',
-        mode: 'arcade',
-        score: 10850,
-        bestRally: 19,
-        maxPhase: 3,
-        perfectHits: 8,
-        difficulty: 'overdrive',
-        createdAt: '2026-11-20T03:22:00.000Z',
-      },
-      {
-        id: 'seed-arc-4',
-        name: 'NIOBE',
-        mode: 'arcade',
-        score: 7600,
-        bestRally: 15,
-        maxPhase: 3,
-        perfectHits: 6,
-        difficulty: 'overdrive',
-        createdAt: '2026-11-20T19:05:00.000Z',
-      },
-      {
-        id: 'seed-arc-5',
-        name: 'TANK',
-        mode: 'arcade',
-        score: 4950,
-        bestRally: 11,
-        maxPhase: 2,
-        perfectHits: 4,
-        difficulty: 'overdrive',
-        createdAt: '2026-11-21T11:30:00.000Z',
-      },
-      {
-        id: 'seed-arc-6',
-        name: 'CYPHER',
-        mode: 'arcade',
-        score: 2600,
-        bestRally: 7,
-        maxPhase: 1,
-        perfectHits: 2,
-        difficulty: 'overdrive',
-        createdAt: '2026-11-21T22:10:00.000Z',
-      },
-    ],
-    duel: [
-      {
-        id: 'seed-duel-1',
-        name: 'THE_ONE',
-        mode: 'duel',
-        score: 9850,
-        bestRally: 22,
-        maxPhase: 4,
-        perfectHits: 12,
-        difficulty: 'architect',
-        matchScore: '11-3',
-        createdAt: '2026-11-18T12:00:00.000Z',
-      },
-      {
-        id: 'seed-duel-2',
-        name: 'SERAPH',
-        mode: 'duel',
-        score: 7900,
-        bestRally: 18,
-        maxPhase: 3,
-        perfectHits: 9,
-        difficulty: 'architect',
-        matchScore: '11-6',
-        createdAt: '2026-11-19T16:30:00.000Z',
-      },
-      {
-        id: 'seed-duel-3',
-        name: 'GHOST',
-        mode: 'duel',
-        score: 5400,
-        bestRally: 14,
-        maxPhase: 2,
-        perfectHits: 6,
-        difficulty: 'hunter',
-        matchScore: '11-7',
-        createdAt: '2026-11-20T09:45:00.000Z',
-      },
-      {
-        id: 'seed-duel-4',
-        name: 'LINK',
-        mode: 'duel',
-        score: 3650,
-        bestRally: 10,
-        maxPhase: 2,
-        perfectHits: 4,
-        difficulty: 'scout',
-        matchScore: '11-8',
-        createdAt: '2026-11-21T17:12:00.000Z',
-      },
-    ],
+    arcade: [],
+    duel: [],
   },
 };
+
+function stripLegacySeeds(data) {
+  let changed = false;
+  for (const mode of ['arcade', 'duel']) {
+    const list = data.entries[mode] || [];
+    const filtered = list.filter((e) => typeof e?.id !== 'string' || !e.id.startsWith('seed-'));
+    if (filtered.length !== list.length) {
+      data.entries[mode] = filtered;
+      changed = true;
+    }
+  }
+  return changed;
+}
 
 export function sanitizeCallsign(raw) {
   if (typeof raw !== 'string') return '';
@@ -177,13 +74,13 @@ export function validateEntryPayload(body) {
     return { ok: false, error: 'Invalid perfectHits value.' };
   }
 
-  const allowedDiff = new Set(['overdrive', 'scout', 'hunter', 'architect']);
+  const allowedDiff = new Set(['overdrive', 'easy', 'medium', 'hard', 'scout', 'hunter', 'architect']);
   const difficulty =
     typeof body.difficulty === 'string' && allowedDiff.has(body.difficulty.toLowerCase())
       ? body.difficulty.toLowerCase()
       : mode === 'arcade'
         ? 'overdrive'
-        : 'hunter';
+        : 'medium';
 
   let matchScore = undefined;
   if (typeof body.matchScore === 'string') {
@@ -245,6 +142,9 @@ export class LeaderboardStore {
         !Array.isArray(parsed.entries.duel)
       ) {
         throw new Error('Malformed leaderboard schema');
+      }
+      if (stripLegacySeeds(parsed)) {
+        await this._writeAtomic(parsed);
       }
       return parsed;
     } catch (err) {

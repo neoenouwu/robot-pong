@@ -23,15 +23,14 @@
       <!-- Loading Overlay -->
       <div id="screen-loading" class="modal-backdrop">
         <div class="terminal-card loading-card">
-          <div class="eyebrow">CONSTRUCT INITIALIZATION</div>
           <h1 class="brand-title">SENTINEL <span class="accent-red">PONG</span></h1>
-          <p id="loading-status" class="muted-copy">Loading 3D GLB models...</p>
+          <p id="loading-status" class="muted-copy">Loading 3D models...</p>
           <div class="progress-track">
             <div id="loading-bar" class="progress-fill" style="width: 5%"></div>
           </div>
           <div id="loading-error" class="error-box hidden"></div>
           <button id="btn-retry-load" class="btn btn-primary hidden" type="button">
-            RETRY INITIALIZATION
+            RETRY
           </button>
         </div>
       </div>
@@ -113,16 +112,11 @@
         </div>
       </div>
 
-      <!-- Main Menu Overlay (leaves center 3D Sentinel showcase visible!) -->
+      <!-- Main Menu Overlay (minimal bottom dock so the 3D Sentinel stays front and center) -->
       <div id="screen-menu" class="menu-overlay hidden">
         <div class="menu-grid">
           <section class="terminal-card menu-left">
-            <div class="eyebrow">MATRIX CONSTRUCT // 3D GLB ARENA</div>
             <h1 class="brand-title">SENTINEL <span class="accent-red">PONG</span></h1>
-            <p class="menu-tagline">
-              Face the machine sentinel across a rain-slicked tournament table. Curve shots,
-              trigger Bullet Time, counter Crimson Smashes, and claim #1 on the leaderboard.
-            </p>
 
             <div class="mode-selector" role="tablist" aria-label="Game Mode">
               <button
@@ -131,8 +125,8 @@
                 type="button"
                 data-mode="duel"
               >
-                <span class="mode-name">STORY MODE</span>
-                <span class="mode-desc">Defeat the Sentinel &bull; First to 5</span>
+                <span class="mode-name">STORY</span>
+                <span class="mode-desc">First to 5</span>
               </button>
               <button
                 id="mode-arcade"
@@ -140,55 +134,49 @@
                 type="button"
                 data-mode="arcade"
               >
-                <span class="mode-name">OVERDRIVE ARCADE</span>
-                <span class="mode-desc">3 Shields &bull; 4 Threat Phases &bull; Data Rings</span>
+                <span class="mode-name">ARCADE</span>
+                <span class="mode-desc">3 Shields &bull; Endless</span>
               </button>
             </div>
 
             <div id="duel-diff-wrap" class="diff-row">
-              <span class="hud-label">AI TIER</span>
+              <span class="hud-label">DIFFICULTY</span>
               <div class="diff-pills">
-                <button class="diff-btn active" data-diff="scout" type="button">SCOUT</button>
-                <button class="diff-btn" data-diff="hunter" type="button">HUNTER</button>
-                <button class="diff-btn" data-diff="architect" type="button">ARCHITECT</button>
+                <button class="diff-btn active" data-diff="easy" type="button">EASY</button>
+                <button class="diff-btn" data-diff="medium" type="button">MEDIUM</button>
+                <button class="diff-btn" data-diff="hard" type="button">HARD</button>
               </div>
             </div>
 
-            <!-- Hidden until Stage 2 is discovered & unlocked by beating Stage 1 -->
+            <!-- Hidden until Stage 2 is unlocked by beating Stage 1 -->
             <div id="story-stage-wrap" class="diff-row hidden">
-              <span class="hud-label">STAGE SELECT</span>
+              <span class="hud-label">STAGE</span>
               <div class="diff-pills">
-                <button class="stage-btn active" data-stage="1" type="button">STAGE 1: CONSTRUCT</button>
-                <button class="stage-btn" data-stage="2" type="button">STAGE 2: MACHINE CITY</button>
+                <button class="stage-btn active" data-stage="1" type="button">STAGE 1</button>
+                <button class="stage-btn" data-stage="2" type="button">STAGE 2</button>
               </div>
             </div>
 
             <div class="menu-cta-row">
               <button id="btn-start-game" class="btn btn-primary btn-lg" type="button">
-                ENTER THE CONSTRUCT
-              </button>
-              <button id="btn-open-leaderboard" class="btn btn-secondary" type="button">
-                FULL LEADERBOARD
+                PLAY
               </button>
             </div>
 
             <div class="controls-strip">
-              <div><kbd>MOUSE</kbd> / <kbd>WASD</kbd> Move &amp; Spin</div>
-              <div><kbd>HOLD LMB</kbd> / <kbd>SPACE</kbd> Smash</div>
-              <div><kbd>RMB</kbd> / <kbd>SHIFT</kbd> Bullet Time</div>
+              <div><kbd>MOUSE</kbd> Move</div>
+              <div><kbd>LMB</kbd> / <kbd>SPACE</kbd> Smash</div>
+              <div><kbd>RMB</kbd> / <kbd>SHIFT</kbd> Slow-Mo</div>
             </div>
           </section>
 
           <aside class="terminal-card menu-leaderboard-preview">
             <div class="panel-head">
-              <div>
-                <div class="eyebrow">LIVE TELEMETRY</div>
-                <h2 class="panel-title">TOP OPERATORS</h2>
-              </div>
-              <span id="preview-source-badge" class="source-badge">LIVE</span>
+              <h2 class="panel-title">PERSONAL SCORES</h2>
+              <span id="preview-source-badge" class="source-badge hidden">LOCAL</span>
             </div>
             <div id="menu-lb-list" class="lb-mini-list">
-              <div class="muted-copy">Syncing leaderboard...</div>
+              <div class="muted-copy">No personal scores yet.</div>
             </div>
           </aside>
         </div>
@@ -197,7 +185,6 @@
       <!-- Pause Overlay -->
       <div id="screen-pause" class="modal-backdrop hidden">
         <div class="terminal-card compact-card">
-          <div class="eyebrow">SIMULATION SUSPENDED</div>
           <h2 class="modal-title">PAUSED</h2>
           <div class="settings-row">
             <label for="input-sensitivity">PADDLE SENSITIVITY</label>
@@ -206,20 +193,20 @@
           <div class="modal-actions">
             <button id="btn-resume" class="btn btn-primary" type="button">RESUME</button>
             <button id="btn-restart-pause" class="btn btn-secondary" type="button">RESTART</button>
-            <button id="btn-quit-menu" class="btn btn-ghost" type="button">MAIN MENU</button>
+            <button id="btn-quit-menu" class="btn btn-ghost" type="button">MENU</button>
           </div>
         </div>
       </div>
 
-      <!-- Game Over & Score Submission Modal -->
+      <!-- Game Over & Personal Score Save Modal -->
       <div id="screen-gameover" class="modal-backdrop hidden">
         <div class="terminal-card gameover-card">
-          <div id="go-eyebrow" class="eyebrow">RUN COMPLETE</div>
-          <h2 id="go-title" class="modal-title">SYSTEM BREACH</h2>
+          <div id="go-eyebrow" class="eyebrow hidden"></div>
+          <h2 id="go-title" class="modal-title">GAME OVER</h2>
 
           <div class="stats-grid">
             <div class="stat-box">
-              <div class="hud-label">FINAL SCORE</div>
+              <div class="hud-label">SCORE</div>
               <div id="go-score" class="stat-val accent-green">0</div>
             </div>
             <div class="stat-box">
@@ -237,19 +224,19 @@
           </div>
 
           <form id="form-submit-score" class="submit-form">
-            <label for="input-callsign" class="hud-label">UPLOAD CALLSIGN TO LEADERBOARD</label>
+            <label for="input-callsign" class="hud-label">NAME</label>
             <div class="submit-row">
               <input
                 id="input-callsign"
                 type="text"
                 maxlength="16"
-                placeholder="NEO_01"
+                placeholder="YOUR NAME"
                 autocomplete="off"
                 spellcheck="false"
                 required
               />
               <button id="btn-submit-score" class="btn btn-primary" type="submit">
-                SUBMIT SCORE
+                SAVE SCORE
               </button>
             </div>
             <div id="submit-feedback" class="submit-feedback hidden"></div>
@@ -262,48 +249,7 @@
               RETRY STAGE 2
             </button>
             <button id="btn-play-again" class="btn btn-primary" type="button">PLAY AGAIN</button>
-            <button id="btn-go-menu" class="btn btn-secondary" type="button">MAIN MENU</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Full Leaderboard Modal -->
-      <div id="screen-leaderboard" class="modal-backdrop hidden">
-        <div class="terminal-card leaderboard-modal">
-          <div class="panel-head">
-            <div>
-              <div class="eyebrow">ZION MAINFRAME RANKINGS</div>
-              <h2 class="modal-title">GLOBAL LEADERBOARD</h2>
-            </div>
-            <span id="modal-source-badge" class="source-badge">LIVE</span>
-          </div>
-
-          <div class="lb-tabs">
-            <button id="lb-tab-duel" class="tab-btn active" type="button" data-tab="duel">
-              STORY MODE
-            </button>
-            <button id="lb-tab-arcade" class="tab-btn" type="button" data-tab="arcade">
-              OVERDRIVE ARCADE
-            </button>
-          </div>
-
-          <div class="lb-table-wrap">
-            <table class="lb-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>OPERATOR</th>
-                  <th>SCORE</th>
-                  <th>RALLY</th>
-                  <th>DETAIL</th>
-                </tr>
-              </thead>
-              <tbody id="lb-table-body"></tbody>
-            </table>
-          </div>
-
-          <div class="modal-actions">
-            <button id="btn-close-leaderboard" class="btn btn-secondary" type="button">CLOSE</button>
+            <button id="btn-go-menu" class="btn btn-secondary" type="button">MENU</button>
           </div>
         </div>
       </div>
@@ -311,13 +257,12 @@
       <!-- WebGL Context Lost Guard -->
       <div id="screen-context-lost" class="modal-backdrop hidden">
         <div class="terminal-card compact-card">
-          <div class="eyebrow">GRAPHICS INTERRUPT</div>
           <h2 class="modal-title">WEBGL CONTEXT LOST</h2>
           <p class="muted-copy">
             Your GPU context was temporarily reset. Waiting for automatic restoration, or reload to
-            re-enter the construct.
+            continue.
           </p>
-          <button id="btn-reload-page" class="btn btn-primary" type="button">RELOAD ARENA</button>
+          <button id="btn-reload-page" class="btn btn-primary" type="button">RELOAD</button>
         </div>
       </div>
     </div>

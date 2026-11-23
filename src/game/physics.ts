@@ -241,9 +241,10 @@ export function evaluateAutoBulletTime(input: AutoBulletTimeInput): {
     return { active: false, newlyTriggered: false };
   }
 
-  // Don't slow down balls flying outside the playable court zone
+  // Don't slow down balls flying outside the playable court zone (allow wider reach if it bounced on player's side)
+  const maxPlayableX = ball.bouncesOnPlayer >= 1 ? 2.05 : 1.32;
   if (
-    Math.abs(pred.x) > 1.32 ||
+    Math.abs(pred.x) > maxPlayableX ||
     pred.y < TABLE.SURFACE_Y - 0.05 ||
     pred.y > 1.96
   ) {
@@ -264,6 +265,76 @@ export function evaluateAutoBulletTime(input: AutoBulletTimeInput): {
   }
 
   return { active: false, newlyTriggered: false };
+}
+
+export interface EdgeJumpInput {
+  ball: BallState;
+  rawNdcX: number;
+  baseTargetX: number;
+  baseTargetY: number;
+  targetZ: number;
+}
+
+export const EDGE_JUMP_MAX_X = 2.05;
+
+/**
+ * When the player's cursor/paddle is near the left or right edge of the screen
+ * and vertically aligned with an incoming wide/off-screen ball on that same side,
+ * jumps horizontally onto the ball's predicted crossing X so wide shots don't slip off-screen.
+ */
+export function computeEdgeJumpTargetX(input: EdgeJumpInput): {
+  active: boolean;
+  targetX: number;
+} {
+  const { ball, rawNdcX, baseTargetX, baseTargetY, targetZ } = input;
+
+  if (
+    !ball.active ||
+    ball.lastHitBy === 'player' ||
+    ball.vel.z <= 0.25 ||
+    ball.pos.z > targetZ + 0.08
+  ) {
+    return { active: false, targetX: baseTargetX };
+  }
+
+  // Must be pushed near the left or right edge of the screen / strike zone
+  const nearEdge = Math.abs(rawNdcX) >= 0.72 || Math.abs(baseTargetX) >= 0.92;
+  if (!nearEdge) {
+    return { active: false, targetX: baseTargetX };
+  }
+
+  const edgeSign = Math.sign(Math.abs(rawNdcX) >= 0.72 ? rawNdcX : baseTargetX);
+  if (edgeSign === 0) {
+    return { active: false, targetX: baseTargetX };
+  }
+
+  const pred = predictBallAtZ(ball, targetZ);
+  if (!pred.willReach || pred.time <= 0 || pred.time > 0.55) {
+    return { active: false, targetX: baseTargetX };
+  }
+
+  // Ball must be heading to the SAME side and near/beyond the outer table edge
+  if (Math.sign(pred.x) !== edgeSign || Math.abs(pred.x) < 0.68) {
+    return { active: false, targetX: baseTargetX };
+  }
+
+  // Don't auto-jump far outside the sidelines for an unbounced Sentinel out-of-bounds fault
+  const maxReach =
+    ball.bouncesOnPlayer >= 1 ? EDGE_JUMP_MAX_X : TABLE.HALF_WIDTH + 0.24;
+  if (Math.abs(pred.x) > maxReach) {
+    return { active: false, targetX: baseTargetX };
+  }
+
+  // Must be vertically correct (aligned with predicted ball crossing height)
+  const verticalTolerance = PLAYER_PADDLE.HIT_RADIUS_Y * 1.35;
+  if (Math.abs(pred.y - baseTargetY) > verticalTolerance) {
+    return { active: false, targetX: baseTargetX };
+  }
+
+  return {
+    active: true,
+    targetX: clamp(pred.x, -EDGE_JUMP_MAX_X, EDGE_JUMP_MAX_X),
+  };
 }
 
 /**
@@ -333,6 +404,7 @@ export function checkSweptPaddleHit(
 
 export interface StepOptions {
   playerPaddle: PaddleState;
+  ghostPlayerPaddle?: PaddleState;
   sentinelPaddle: PaddleState;
   sentinelReturnFn?: (ball: BallState, hitPos: Vec3) => {
     targetX: number;
@@ -481,14 +553,25 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
       }
     }
 
-    // 3. Player paddle swept collision check
+    // 3. Player paddle swept collision check (primary 3D paddle + invisible ghost cursor second hitbox)
     if (ball.hitCooldown <= 0 && ball.lastHitBy !== 'player' && ball.vel.z > 0.1) {
-      const hitRes = checkSweptPaddleHit(prevPos, ball.pos, opts.playerPaddle, 'player');
+      const primaryHit = checkSweptPaddleHit(prevPos, ball.pos, opts.playerPaddle, 'player');
+      const ghostHit = opts.ghostPlayerPaddle
+        ? checkSweptPaddleHit(prevPos, ball.pos, opts.ghostPlayerPaddle, 'player')
+        : null;
+
+      let activePaddle: PaddleState = opts.playerPaddle;
+      let hitRes = primaryHit;
+      if (ghostHit?.hit && (!primaryHit.hit || ghostHit.dist < primaryHit.dist)) {
+        hitRes = ghostHit;
+        activePaddle = opts.ghostPlayerPaddle!;
+      }
+
       if (hitRes.hit) {
-        const paddleVel = opts.playerPaddle.vel;
+        const paddleVel = activePaddle.vel;
         const swingHoriz = clamp(paddleVel.x, -7, 7);
         const swingForward = clamp(-paddleVel.z, -2, 6);
-        const smashCharge = clamp(opts.playerPaddle.smashCharge, 0, 1);
+        const smashCharge = clamp(activePaddle.smashCharge, 0, 1);
 
         const perfect = hitRes.dist <= PLAYER_PADDLE.SWEET_SPOT_RADIUS;
         const counterSmash = ball.isCrimsonSmash;
@@ -539,7 +622,7 @@ export function stepPhysics(ball: BallState, rawDt: number, opts: StepOptions): 
 
         ball.pos.x = hitRes.hitPos.x;
         ball.pos.y = hitRes.hitPos.y;
-        ball.pos.z = Math.min(hitRes.hitPos.z, opts.playerPaddle.pos.z - 0.035);
+        ball.pos.z = Math.min(hitRes.hitPos.z, activePaddle.pos.z - 0.035);
         ball.vel = newVel;
         ball.spin = { x: spinX, y: spinY, z: 0 };
         ball.lastHitBy = 'player';
