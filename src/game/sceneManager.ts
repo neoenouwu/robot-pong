@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ROBOT, TABLE, type StoryStage, type ThreatPhaseConfig } from './constants';
 import type { SoundEngine } from './audio';
+import { assetUrl } from './assetUrl';
 import { createDataRainWalls, GameplayVFX, SteamMistSystem } from './visualEffects';
 import { getRobotSkin, type RobotSkinDefinition } from './robotSkins';
 import { RobotController } from './robotRig';
@@ -376,7 +377,7 @@ export class SceneManager {
       let lastErr: unknown;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const gltf = await this.gltfLoader.loadAsync(url);
+          const gltf = await this.gltfLoader.loadAsync(assetUrl(url));
           return gltf.scene;
         } catch (err) {
           lastErr = err;
@@ -554,7 +555,7 @@ export class SceneManager {
       let lastErr: unknown;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const gltf = await this.gltfLoader.loadAsync(skin.modelUrl);
+          const gltf = await this.gltfLoader.loadAsync(assetUrl(skin.modelUrl));
           model = gltf.scene;
           break;
         } catch (err) {
@@ -626,7 +627,7 @@ export class SceneManager {
         if (this.robotSkinCache.has(refSkin.id)) return;
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            const gltf = await this.gltfLoader.loadAsync(refSkin.modelUrl);
+            const gltf = await this.gltfLoader.loadAsync(assetUrl(refSkin.modelUrl));
             gltf.scene.traverse((obj) => {
               if ((obj as THREE.Mesh).isMesh) {
                 const m = obj as THREE.Mesh;
@@ -646,7 +647,7 @@ export class SceneManager {
         if (this.cityscapeObj) return;
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            const gltf = await this.gltfLoader.loadAsync('/models/cityscape_expansion.glb');
+            const gltf = await this.gltfLoader.loadAsync(assetUrl('/models/cityscape_expansion.glb'));
             const city = gltf.scene;
             city.visible = false;
             city.position.set(0, 0, 0);

@@ -15,6 +15,7 @@ import {
 } from '../src/game/physics';
 import { computeGhostPaddleOpacity, projectNdcToZPlane } from '../src/game/sceneManager';
 import { computeFloatingPopupOrigin } from '../src/game/visualEffects';
+import { assetUrl } from '../src/game/assetUrl';
 import { evaluateStoryMatchOutcome } from '../src/game/gameEngine';
 import { DEFAULT_ROBOT_SKIN_ID, getRobotSkin, ROBOT_SKINS } from '../src/game/robotSkins';
 import { DUEL_DIFFICULTIES, PLAYER_PADDLE, ROBOT, STORY_STAGE2_CONFIGS, TABLE } from '../src/game/constants';
@@ -478,6 +479,23 @@ describe('3D Table Tennis Physics Engine', () => {
     const playerHit = evs.find((e) => e.type === 'paddle_hit' && e.by === 'player');
     expect(playerHit).toBeDefined();
     expect(ball.vel.z).toBeLessThan(0); // returned cleanly back toward Robot!
+  });
+});
+
+describe('Asset URL resolution', () => {
+  it('resolves model paths against the base the app is served from (root, sub-path, or relative)', () => {
+    // Domain root (Node server / dev)
+    expect(assetUrl('/models/table.glb', '/')).toBe('/models/table.glb');
+    // Relative base used by the production build — works under any sub-path
+    expect(assetUrl('/models/table.glb', './')).toBe('./models/table.glb');
+    // Explicit sub-path, with and without a trailing slash
+    expect(assetUrl('/models/table.glb', '/some-repo/')).toBe('/some-repo/models/table.glb');
+    expect(assetUrl('/models/table.glb', '/some-repo')).toBe('/some-repo/models/table.glb');
+    // Never doubles or drops slashes whatever the input looks like
+    expect(assetUrl('models/table.glb', './')).toBe('./models/table.glb');
+    expect(assetUrl('//models/table.glb', '/')).toBe('/models/table.glb');
+    // Default base comes from the build configuration and always ends in a slash
+    expect(assetUrl('/models/table.glb')).toMatch(/^(\.\/|\/)models\/table\.glb$/);
   });
 });
 
