@@ -4,7 +4,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { TABLE } from './constants';
+import { SENTINEL, TABLE, type StoryStage, type ThreatPhaseConfig } from './constants';
+import type { SoundEngine } from './audio';
 import { createMatrixRainWalls, GameplayVFX, SteamMistSystem } from './matrixEffects';
 import { getRobotSkin, type RobotSkinDefinition } from './robotSkins';
 import { SentinelController } from './sentinelRig';
@@ -117,6 +118,27 @@ export class SceneManager {
   private activeSkinId: string = 'classic';
   private skinLoadSeq = 0;
 
+  // Stage 2 Expansion & Boss-Destruction Cutscene State
+  private cityscapeObj: THREE.Object3D | null = null;
+  private stage2PreloadPromise: Promise<void> | null = null;
+  private readonly cityEmeraldLight: THREE.DirectionalLight;
+  private readonly cityAmberLeft: THREE.PointLight;
+  private readonly cityAmberRight: THREE.PointLight;
+  private currentStage: StoryStage = 1;
+  private cutsceneActive = false;
+  private cutsceneRumbleFired = false;
+  private cutsceneCrushFired = false;
+  private cutsceneExpandFired = false;
+  private cutsceneSwappedController = false;
+  private cutsceneSparkAccum = 0;
+  private defeatedMk1Obj: THREE.Object3D | null = null;
+  private defeatedMk1Pos = new THREE.Vector3();
+  private defeatedMk1Vel = new THREE.Vector3();
+  private defeatedMk1Rot = new THREE.Euler();
+  private apexCutsceneObj: THREE.Object3D | null = null;
+  private readonly cutsceneCamPos = new THREE.Vector3();
+  private readonly cutsceneCamLook = new THREE.Vector3();
+
   private shakeMagnitude = 0;
   private cameraClock = 0;
   private contextLost = false;
@@ -172,7 +194,7 @@ export class SceneManager {
     const aspect =
       (container.clientWidth || window.innerWidth) /
       Math.max(1, container.clientHeight || window.innerHeight);
-    this.camera = new THREE.PerspectiveCamera(this.computeAdaptiveFov(aspect), aspect, 0.08, 60);
+    this.camera = new THREE.PerspectiveCamera(this.computeAdaptiveFov(aspect), aspect, 0.08, 155);
     this.camera.position.set(0, 1.62, 2.52);
     this.camera.lookAt(0, 1.06, -1.25);
 
@@ -220,6 +242,19 @@ export class SceneManager {
     this.sentinelEyeLight = new THREE.PointLight(0xff1428, 8.5, 9.5, 1.6);
     this.sentinelEyeLight.position.set(0, 2.05, -1.65);
     this.scene.add(this.sentinelEyeLight);
+
+    // 5) Stage 2 Distant Cityscape Atmospheric Lights (intensity = 0 on Stage 1 so Stage 1 is untouched!)
+    this.cityEmeraldLight = new THREE.DirectionalLight(0x1dff80, 0);
+    this.cityEmeraldLight.position.set(-26, 34, -18);
+    this.scene.add(this.cityEmeraldLight);
+
+    this.cityAmberLeft = new THREE.PointLight(0xff7d1f, 0, 52, 1.25);
+    this.cityAmberLeft.position.set(-18, 4.5, -26);
+    this.scene.add(this.cityAmberLeft);
+
+    this.cityAmberRight = new THREE.PointLight(0xff7d1f, 0, 52, 1.25);
+    this.cityAmberRight.position.set(18, 4.5, -26);
+    this.scene.add(this.cityAmberRight);
 
     // Atmospheric VFX layers
     this.matrixRain = createMatrixRainWalls();
@@ -499,6 +534,396 @@ export class SceneManager {
     return this.activeSkinId;
   }
 
+  /**
+   * Silently preloads Stage 2 assets (1:1 Apex Sentinel + Matrix Cityscape Expansion)
+   * in the background without exposing them in UI or altering Stage 1.
+   */
+  public preloadStage2Assets(): Promise<void> {
+    if (this.stage2PreloadPromise) return this.stage2PreloadPromise;
+
+    this.stage2PreloadPromise = (async () => {
+      const refSkin = getRobotSkin('reference');
+
+      const loadSkinTask = (async () => {
+        if (this.sentinelSkinCache.has(refSkin.id)) return;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const gltf = await this.gltfLoader.loadAsync(refSkin.modelUrl);
+            gltf.scene.traverse((obj) => {
+              if ((obj as THREE.Mesh).isMesh) {
+                const m = obj as THREE.Mesh;
+                m.castShadow = true;
+                m.receiveShadow = true;
+              }
+            });
+            this.sentinelSkinCache.set(refSkin.id, gltf.scene);
+            return;
+          } catch {
+            await new Promise((r) => setTimeout(r, 250));
+          }
+        }
+      })();
+
+      const loadCityTask = (async () => {
+        if (this.cityscapeObj) return;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const gltf = await this.gltfLoader.loadAsync('/models/cityscape_expansion.glb');
+            const city = gltf.scene;
+            city.visible = false;
+            city.position.set(0, 0, 0);
+            this.scene.add(city);
+            this.cityscapeObj = city;
+            return;
+          } catch {
+            await new Promise((r) => setTimeout(r, 250));
+          }
+        }
+      })();
+
+      await Promise.all([loadSkinTask, loadCityTask]);
+    })();
+
+    return this.stage2PreloadPromise;
+  }
+
+  private applyExpansionVisuals(progress: number): void {
+    const t = Math.max(0, Math.min(1, progress));
+    this.matrixRain.setExpansion(t);
+
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      // Stage 1: exact 0.048 dense indoor haze -> Stage 2: 0.0105 deep cyberpunk skyline vista
+      this.scene.fog.density = 0.048 + (0.0105 - 0.048) * t;
+    }
+
+    this.cityEmeraldLight.intensity = 1.15 * t;
+    this.cityAmberLeft.intensity = 65 * t;
+    this.cityAmberRight.intensity = 65 * t;
+
+    if (this.cityscapeObj) {
+      this.cityscapeObj.visible = t > 0.005;
+      const easeOut = 1 - Math.pow(1 - t, 3);
+      this.cityscapeObj.position.set(0, -6.5 * (1 - easeOut), 0);
+      this.cityscapeObj.scale.setScalar(0.94 + 0.06 * easeOut);
+    }
+  }
+
+  /**
+   * Snaps environment and active boss cleanly to Stage 1 (exact classic look)
+   * or Stage 2 (1:1 Apex Sentinel + expanded Matrix Machine Cityscape).
+   */
+  public async setEnvironmentStage(stage: StoryStage): Promise<void> {
+    this.cutsceneActive = false;
+    this.currentStage = stage;
+
+    // Clean up any leftover cutscene actors
+    if (this.defeatedMk1Obj && this.defeatedMk1Obj !== this.activeSentinelObj) {
+      this.scene.remove(this.defeatedMk1Obj);
+      this.defeatedMk1Obj.visible = true;
+      this.defeatedMk1Obj.rotation.set(0, 0, 0);
+      this.defeatedMk1Obj.position.set(
+        SENTINEL.HOME_POS.x,
+        SENTINEL.HOME_POS.y,
+        SENTINEL.HOME_POS.z
+      );
+    }
+    this.defeatedMk1Obj = null;
+
+    if (this.apexCutsceneObj && this.apexCutsceneObj !== this.activeSentinelObj) {
+      this.scene.remove(this.apexCutsceneObj);
+    }
+    this.apexCutsceneObj = null;
+
+    if (this.ballObj) this.ballObj.visible = true;
+    if (this.playerPaddleObj) this.playerPaddleObj.visible = true;
+
+    if (stage === 2) {
+      await this.preloadStage2Assets();
+      const refSkin = getRobotSkin('reference');
+      await this.setSentinelSkin(refSkin);
+      this.applyExpansionVisuals(1);
+    } else {
+      const classicSkin = getRobotSkin('classic');
+      await this.setSentinelSkin(classicSkin);
+      if (this.activeSentinelObj) {
+        this.activeSentinelObj.visible = true;
+        this.activeSentinelObj.rotation.set(0, 0, 0);
+        this.activeSentinelObj.position.set(
+          SENTINEL.HOME_POS.x,
+          SENTINEL.HOME_POS.y,
+          SENTINEL.HOME_POS.z
+        );
+      }
+      this.applyExpansionVisuals(0);
+    }
+  }
+
+  public getEnvironmentStage(): StoryStage {
+    return this.currentStage;
+  }
+
+  /**
+   * Begins the real-time 3D Story Mode Stage 1 -> Stage 2 transformation cutscene:
+   * MK-I sparks/fails -> 1:1 Apex Sentinel descends & crushes MK-I -> Cityscape expands outward.
+   */
+  public async beginStage2Cutscene(): Promise<void> {
+    await this.preloadStage2Assets();
+
+    // Ensure MK-I classic is mounted as the victim at its exact current position
+    const classicObj = this.sentinelSkinCache.get('classic') ?? this.activeSentinelObj;
+    const apexObj = this.sentinelSkinCache.get('reference') ?? null;
+
+    this.cutsceneActive = true;
+    if (this.ballObj) this.ballObj.visible = false;
+    if (this.playerPaddleObj) this.playerPaddleObj.visible = false;
+    this.cutsceneRumbleFired = false;
+    this.cutsceneCrushFired = false;
+    this.cutsceneExpandFired = false;
+    this.cutsceneSwappedController = false;
+    this.cutsceneSparkAccum = 0;
+
+    this.defeatedMk1Obj = classicObj ?? null;
+    if (this.defeatedMk1Obj) {
+      if (!this.defeatedMk1Obj.parent) this.scene.add(this.defeatedMk1Obj);
+      this.defeatedMk1Obj.visible = true;
+      this.defeatedMk1Pos.copy(this.defeatedMk1Obj.position);
+      this.defeatedMk1Rot.copy(this.defeatedMk1Obj.rotation);
+      this.defeatedMk1Vel.set(0.9, 1.4, -7.8);
+    }
+
+    this.apexCutsceneObj = apexObj;
+    if (this.apexCutsceneObj) {
+      if (!this.apexCutsceneObj.parent) this.scene.add(this.apexCutsceneObj);
+      this.apexCutsceneObj.visible = false;
+      this.apexCutsceneObj.position.set(0, 7.8, -5.6);
+      this.apexCutsceneObj.rotation.set(0.28, 0, 0);
+    }
+
+    // Start at exact Stage 1 environment (expansion = 0)
+    this.applyExpansionVisuals(0);
+  }
+
+  /**
+   * Drives one frame of the 5.75s real-time boss-destruction & cityscape-expansion cutscene.
+   */
+  public updateStage2Cutscene(
+    elapsed: number,
+    realDt: number,
+    audio: SoundEngine,
+    ball: BallState,
+    stage2Phase: ThreatPhaseConfig
+  ): void {
+    if (!this.cutsceneActive || this.contextLost) return;
+
+    this.cameraClock += realDt;
+    this.shakeMagnitude = Math.max(0, this.shakeMagnitude - realDt * 0.45);
+    this.steam.update(this.cameraClock);
+    this.matrixRain.update(realDt * 1.45, 1.25);
+
+    const smoothstep = (x: number) => {
+      const c = Math.max(0, Math.min(1, x));
+      return c * c * (3 - 2 * c);
+    };
+
+    // Phase A (0.0s - 1.15s): MK-I sparks violently & shudders in critical failure
+    if (!this.cutsceneRumbleFired && elapsed >= 0.02) {
+      this.cutsceneRumbleFired = true;
+      audio.playBossRumble();
+    }
+
+    if (this.defeatedMk1Obj && elapsed < 2.0) {
+      // Keep MK-I's arm actively gripping the red paddle while sparking & failing
+      if (this.sentinelController && this.sentinelController.root === this.defeatedMk1Obj) {
+        this.sentinelController.update(realDt, ball, stage2Phase, false);
+      }
+      const stress = Math.min(1, elapsed / 1.5);
+      const jitter = 0.045 + stress * 0.08;
+      this.defeatedMk1Obj.position.x += (Math.random() - 0.5) * jitter;
+      this.defeatedMk1Obj.position.y += (Math.random() - 0.5) * jitter - stress * 0.1;
+      this.defeatedMk1Obj.position.z += (Math.random() - 0.5) * jitter;
+      this.defeatedMk1Obj.rotation.x += Math.sin(elapsed * 26) * 0.1;
+      this.defeatedMk1Obj.rotation.z += Math.sin(elapsed * 33) * 0.14;
+
+      this.cutsceneSparkAccum += realDt;
+      if (this.cutsceneSparkAccum >= 0.13) {
+        this.cutsceneSparkAccum = 0;
+        this.vfx.emitSparks(
+          {
+            x: this.defeatedMk1Obj.position.x + (Math.random() - 0.5) * 0.9,
+            y: this.defeatedMk1Obj.position.y + (Math.random() - 0.5) * 0.5,
+            z: this.defeatedMk1Obj.position.z + 0.45,
+          },
+          Math.random() < 0.5 ? 0xff7a1f : 0xff2240,
+          16,
+          1.35
+        );
+      }
+    }
+
+    // Between crush impact (2.00s) and Apex snatch (2.22s), red paddle pops briefly into the air
+    if (elapsed >= 2.0 && elapsed < 2.22 && this.sentinelPaddleObj) {
+      const popT = (elapsed - 2.0) / 0.22;
+      this.sentinelPaddleObj.position.y = TABLE.SURFACE_Y + 0.34 + Math.sin(popT * Math.PI) * 0.28;
+      this.sentinelPaddleObj.rotation.z = popT * 1.4;
+    }
+
+    // Phase B (1.0s - 2.15s): 1:1 Apex Sentinel plunges down from ceiling cables & slams MK-I!
+    if (this.apexCutsceneObj && elapsed >= 0.95 && !this.cutsceneSwappedController) {
+      this.apexCutsceneObj.visible = true;
+      const diveT = Math.max(0, Math.min(1, (elapsed - 0.95) / 1.05));
+      // Accelerating predator slam curve
+      const easeIn = diveT * diveT * diveT;
+      this.apexCutsceneObj.position.set(
+        0,
+        7.8 + (SENTINEL.HOME_POS.y + 0.18 - 7.8) * easeIn,
+        -5.6 + (SENTINEL.HOME_POS.z + 0.1 - -5.6) * easeIn
+      );
+      this.apexCutsceneObj.rotation.set(0.32 * (1 - easeIn), 0, 0);
+      this.sentinelEyeLight.position.set(
+        0,
+        this.apexCutsceneObj.position.y,
+        this.apexCutsceneObj.position.z + 0.85
+      );
+      this.sentinelEyeLight.intensity = 10 + diveT * 10;
+    }
+
+    // Impact moment (t = 2.00s): Massive metallic crush + shockwave + hurl MK-I into the abyss!
+    if (!this.cutsceneCrushFired && elapsed >= 2.0) {
+      this.cutsceneCrushFired = true;
+      audio.playBossCrush();
+      this.addCameraShake(0.14);
+      const impactCenter = {
+        x: SENTINEL.HOME_POS.x,
+        y: SENTINEL.HOME_POS.y,
+        z: SENTINEL.HOME_POS.z + 0.25,
+      };
+      this.vfx.spawnShockwave(impactCenter, 0xff2842);
+      this.vfx.emitSparks(impactCenter, 0xff8a24, 36, 2.3);
+      this.vfx.emitSparks(impactCenter, 0xff1e3c, 28, 1.9);
+      this.vfx.emitSparks(impactCenter, 0xfff0b0, 16, 2.5);
+    }
+
+    // Destroyed MK-I tumbles backward into the dark abyss & disappears
+    if (this.defeatedMk1Obj && elapsed >= 2.0) {
+      if (this.defeatedMk1Obj.visible) {
+        this.defeatedMk1Vel.y -= 13.5 * realDt;
+        this.defeatedMk1Obj.position.addScaledVector(this.defeatedMk1Vel, realDt);
+        this.defeatedMk1Obj.rotation.x += 4.6 * realDt;
+        this.defeatedMk1Obj.rotation.y += 3.2 * realDt;
+        this.defeatedMk1Obj.rotation.z -= 5.1 * realDt;
+
+        this.cutsceneSparkAccum += realDt;
+        if (this.cutsceneSparkAccum >= 0.07) {
+          this.cutsceneSparkAccum = 0;
+          this.vfx.emitSparks(
+            {
+              x: this.defeatedMk1Obj.position.x,
+              y: this.defeatedMk1Obj.position.y,
+              z: this.defeatedMk1Obj.position.z,
+            },
+            0xff6a1a,
+            10,
+            1.4
+          );
+        }
+
+        if (this.defeatedMk1Obj.position.y < -4.2) {
+          this.defeatedMk1Obj.visible = false;
+        }
+      }
+    }
+
+    // At t = 2.22s: Apex Sentinel snaps into command & snatches the airborne red paddle!
+    if (!this.cutsceneSwappedController && elapsed >= 2.22 && this.apexCutsceneObj && this.sentinelPaddleObj) {
+      this.cutsceneSwappedController = true;
+      this.activeSentinelObj = this.apexCutsceneObj;
+      this.activeSkinId = 'reference';
+      this.sentinelController = new SentinelController(
+        this.apexCutsceneObj,
+        this.sentinelPaddleObj,
+        this.sentinelEyeLight,
+        'high_coil'
+      );
+      this.sentinelController.triggerSwing(true);
+    }
+
+    if (this.cutsceneSwappedController && this.sentinelController) {
+      this.sentinelController.update(realDt, ball, stage2Phase, false);
+    }
+
+    // Phase C (2.70s - 5.15s): Matrix rain horizon pushes far outward & 3D Machine Cityscape expands!
+    if (!this.cutsceneExpandFired && elapsed >= 2.7) {
+      this.cutsceneExpandFired = true;
+      audio.playCityExpand();
+      this.addCameraShake(0.055);
+    }
+
+    if (elapsed >= 2.7) {
+      const expT = smoothstep((elapsed - 2.7) / 2.45);
+      this.applyExpansionVisuals(expT);
+    }
+
+    // Cinematic camera choreography across the 5.75s reveal:
+    const shakeX = (Math.random() - 0.5) * this.shakeMagnitude;
+    const shakeY = (Math.random() - 0.5) * this.shakeMagnitude;
+
+    if (elapsed < 2.7) {
+      // Dramatic low angle framing MK-I destruction & Apex descent
+      const tA = smoothstep(elapsed / 1.4);
+      this.cutsceneCamPos.set(
+        0.24 * tA + shakeX,
+        1.66 + (1.28 - 1.66) * tA + shakeY,
+        2.56 + (2.74 - 2.56) * tA
+      );
+      this.cutsceneCamLook.set(0, 1.1 + 0.72 * tA, -1.9);
+    } else if (elapsed < 4.95) {
+      // Wide grand panorama showcasing the expanding 3D Matrix Cityscape behind the untouched table
+      const tB = smoothstep((elapsed - 2.7) / 1.6);
+      this.cutsceneCamPos.set(
+        0.24 * (1 - tB) + shakeX,
+        1.28 + (1.58 - 1.28) * tB + shakeY,
+        2.74 + (3.08 - 2.74) * tB
+      );
+      this.cutsceneCamLook.set(0, 1.82 + 0.42 * tB, -4.5);
+    } else {
+      // Smooth glide back to exact crisp gameplay camera over the untouched table
+      const tC = smoothstep((elapsed - 4.95) / 0.8);
+      this.cutsceneCamPos.set(
+        shakeX,
+        1.58 + (1.66 - 1.58) * tC + shakeY,
+        3.08 + (2.56 - 3.08) * tC
+      );
+      this.cutsceneCamLook.set(
+        0,
+        2.24 + (TABLE.SURFACE_Y + 0.34 - 2.24) * tC,
+        -4.5 + (-0.95 - -4.5) * tC
+      );
+    }
+
+    this.camera.position.lerp(this.cutsceneCamPos, Math.min(1, realDt * 7.5));
+    this.camera.lookAt(this.cutsceneCamLook);
+
+    if (this.sentinelController) {
+      this.sentinelController.getMainEyeWorldPosition(this.eyeWorldScratch);
+    } else {
+      this.eyeWorldScratch.set(0, 2.05, -2.1);
+    }
+    this.vfx.update(realDt, realDt, ball, this.eyeWorldScratch, elapsed >= 1.5 && elapsed < 2.2 ? 0.9 : 0);
+
+    if (this.bloomPass) {
+      this.bloomPass.strength = elapsed >= 1.95 && elapsed <= 2.45 ? 0.65 : 0.4;
+    }
+    if (this.bloomEnabled && this.composer) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  public async finishStage2Cutscene(): Promise<void> {
+    await this.setEnvironmentStage(2);
+  }
+
   public syncPlayerPaddle(paddle: PaddleState, bulletTime: boolean): void {
     if (!this.playerPaddleObj) return;
     this.playerPaddleObj.position.set(paddle.pos.x, paddle.pos.y, paddle.pos.z);
@@ -541,7 +966,11 @@ export class SceneManager {
 
     // Matrix rain slows down dramatically in Bullet Time and intensifies at higher Threat Phases!
     const rainDt = opts.bulletTime ? dt * 0.35 : realDt * (1 + (opts.phaseNumber - 1) * 0.18);
-    this.matrixRain.update(rainDt, opts.bulletTime ? 1.38 : 1.05 + (opts.phaseNumber - 1) * 0.08);
+    const baseRainIntensity = this.currentStage === 2 ? 1.18 : 1.05;
+    this.matrixRain.update(
+      rainDt,
+      opts.bulletTime ? 1.38 : baseRainIntensity + (opts.phaseNumber - 1) * 0.08
+    );
     this.steam.update(this.cameraClock);
 
     // Update gameplay VFX
@@ -561,6 +990,10 @@ export class SceneManager {
     // - In Gameplay: crisp elevated player eye-view tracking subtly with player's paddle for awesome depth clarity
     const shakeX = (Math.random() - 0.5) * this.shakeMagnitude;
     const shakeY = (Math.random() - 0.5) * this.shakeMagnitude;
+
+    if (this.playerPaddleObj && !this.cutsceneActive) {
+      this.playerPaddleObj.visible = !opts.isMenu;
+    }
 
     if (opts.isMenu) {
       const swayX = Math.sin(this.cameraClock * 0.38) * 0.36;

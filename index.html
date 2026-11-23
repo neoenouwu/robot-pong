@@ -11,9 +11,14 @@
       <!-- 3D WebGL Viewport -->
       <div id="canvas-container" aria-label="Sentinel Pong 3D Arena"></div>
 
-      <!-- Bullet-Time & Smash Warning Screen Overlays -->
+      <!-- Bullet-Time, Smash Warning & Cinematic Letterbox Overlays -->
       <div id="fx-bullet-vignette" class="fx-overlay" aria-hidden="true"></div>
       <div id="fx-smash-warning" class="fx-overlay" aria-hidden="true"></div>
+      <div id="fx-letterbox-top" class="fx-letterbox top" aria-hidden="true"></div>
+      <div id="fx-letterbox-bottom" class="fx-letterbox bottom" aria-hidden="true"></div>
+      <div id="cutscene-skip-hint" class="cutscene-skip hidden">
+        PRESS <kbd>SPACE</kbd> TO SKIP
+      </div>
 
       <!-- Loading Overlay -->
       <div id="screen-loading" class="modal-backdrop">
@@ -121,40 +126,41 @@
 
             <div class="mode-selector" role="tablist" aria-label="Game Mode">
               <button
-                id="mode-arcade"
+                id="mode-duel"
                 class="mode-btn active"
+                type="button"
+                data-mode="duel"
+              >
+                <span class="mode-name">STORY MODE</span>
+                <span class="mode-desc">Defeat the Sentinel &bull; First to 5</span>
+              </button>
+              <button
+                id="mode-arcade"
+                class="mode-btn"
                 type="button"
                 data-mode="arcade"
               >
                 <span class="mode-name">OVERDRIVE ARCADE</span>
                 <span class="mode-desc">3 Shields &bull; 4 Threat Phases &bull; Data Rings</span>
               </button>
-              <button
-                id="mode-duel"
-                class="mode-btn"
-                type="button"
-                data-mode="duel"
-              >
-                <span class="mode-name">BOSS DUEL (TO 11)</span>
-                <span class="mode-desc">Classic Win-by-2 Match &bull; 3 AI Tiers</span>
-              </button>
             </div>
 
-            <div id="duel-diff-wrap" class="diff-row hidden">
+            <div id="duel-diff-wrap" class="diff-row">
               <span class="hud-label">AI TIER</span>
               <div class="diff-pills">
-                <button class="diff-btn" data-diff="scout" type="button">SCOUT</button>
-                <button class="diff-btn active" data-diff="hunter" type="button">HUNTER</button>
+                <button class="diff-btn active" data-diff="scout" type="button">SCOUT</button>
+                <button class="diff-btn" data-diff="hunter" type="button">HUNTER</button>
                 <button class="diff-btn" data-diff="architect" type="button">ARCHITECT</button>
               </div>
             </div>
 
-            <div class="robot-selector-row">
-              <div class="robot-selector-head">
-                <span class="hud-label">ROBOT SKIN // DEV PREVIEW</span>
-                <span id="menu-skin-status" class="skin-status"></span>
+            <!-- Hidden until Stage 2 is discovered & unlocked by beating Stage 1 -->
+            <div id="story-stage-wrap" class="diff-row hidden">
+              <span class="hud-label">STAGE SELECT</span>
+              <div class="diff-pills">
+                <button class="stage-btn active" data-stage="1" type="button">STAGE 1: CONSTRUCT</button>
+                <button class="stage-btn" data-stage="2" type="button">STAGE 2: MACHINE CITY</button>
               </div>
-              <div id="menu-robot-pills" class="robot-pills" role="radiogroup" aria-label="Robot Skin"></div>
             </div>
 
             <div class="menu-cta-row">
@@ -193,13 +199,6 @@
         <div class="terminal-card compact-card">
           <div class="eyebrow">SIMULATION SUSPENDED</div>
           <h2 class="modal-title">PAUSED</h2>
-          <div class="robot-selector-row pause-robot-row">
-            <div class="robot-selector-head">
-              <span class="hud-label">ROBOT SKIN // DEV PREVIEW</span>
-              <span id="pause-skin-status" class="skin-status"></span>
-            </div>
-            <div id="pause-robot-pills" class="robot-pills" role="radiogroup" aria-label="Robot Skin"></div>
-          </div>
           <div class="settings-row">
             <label for="input-sensitivity">PADDLE SENSITIVITY</label>
             <input id="input-sensitivity" type="range" min="0.7" max="1.6" step="0.05" value="1.0" />
@@ -259,6 +258,9 @@
           <div id="go-lb-preview" class="lb-mini-list go-lb-list"></div>
 
           <div class="modal-actions">
+            <button id="btn-retry-stage2" class="btn btn-primary hidden" type="button">
+              RETRY STAGE 2
+            </button>
             <button id="btn-play-again" class="btn btn-primary" type="button">PLAY AGAIN</button>
             <button id="btn-go-menu" class="btn btn-secondary" type="button">MAIN MENU</button>
           </div>
@@ -277,11 +279,11 @@
           </div>
 
           <div class="lb-tabs">
-            <button id="lb-tab-arcade" class="tab-btn active" type="button" data-tab="arcade">
-              OVERDRIVE ARCADE
+            <button id="lb-tab-duel" class="tab-btn active" type="button" data-tab="duel">
+              STORY MODE
             </button>
-            <button id="lb-tab-duel" class="tab-btn" type="button" data-tab="duel">
-              BOSS DUEL
+            <button id="lb-tab-arcade" class="tab-btn" type="button" data-tab="arcade">
+              OVERDRIVE ARCADE
             </button>
           </div>
 

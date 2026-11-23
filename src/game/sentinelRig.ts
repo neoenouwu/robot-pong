@@ -62,6 +62,7 @@ export class SentinelController {
   private smashTelegraph = 0; // 0..1 charging crimson smash
   private plannedSmash = false;
   private plannedErrorX = 0;
+  private reactionTimer = 0;
   private trackedShotId = -1;
   private shotCounter = 0;
   private clock = 0;
@@ -313,9 +314,17 @@ export class SentinelController {
     if (incoming) {
       if (this.trackedShotId !== this.shotCounter) {
         this.trackedShotId = this.shotCounter;
-        // Pick a slight deterministic-for-this-shot imperfection so skillful corners beat it
-        const speedFactor = clamp(Math.hypot(ball.vel.x, ball.vel.z) / 8.5, 0.5, 1.5);
-        this.plannedErrorX = (Math.random() - 0.5) * 2 * phase.errorMargin * speedFactor;
+        // Realistic reaction delay before the Sentinel starts sprinting toward a new shot
+        this.reactionTimer = phase.reactionDelay;
+
+        // Lateral imperfection scales up on fast Power Smashes & heavy Magnus curve shots
+        const speedFactor = clamp(Math.hypot(ball.vel.x, ball.vel.z) / 7.2, 0.55, 1.75);
+        const smashPenalty = ball.isPlayerSmash ? 1.45 : 1.0;
+        const spinMisread =
+          -ball.spin.y * 0.014 * phase.spinBlindness;
+        this.plannedErrorX =
+          (Math.random() - 0.5) * 2 * phase.errorMargin * speedFactor * smashPenalty +
+          spinMisread;
 
         // Decide whether this return will be a telegraphed Crimson Smash
         const highBall = ball.pos.y > TABLE.SURFACE_Y + 0.18;
@@ -325,36 +334,42 @@ export class SentinelController {
         }
       }
 
-      const pred = predictBallAtZ(ball, SENTINEL.PADDLE_BASE_Z);
-      if (pred.willReach) {
-        const aimX = clamp(
-          pred.x + this.plannedErrorX,
-          -TABLE.HALF_WIDTH - 0.25,
-          TABLE.HALF_WIDTH + 0.25
-        );
-        const aimY = clamp(pred.y, TABLE.SURFACE_Y + 0.14, 1.55);
+      if (this.reactionTimer > 0) {
+        this.reactionTimer = Math.max(0, this.reactionTimer - dt);
+      } else {
+        const pred = predictBallAtZ(ball, SENTINEL.PADDLE_BASE_Z);
+        if (pred.willReach) {
+          const aimX = clamp(
+            pred.x + this.plannedErrorX,
+            -TABLE.HALF_WIDTH - 0.22,
+            TABLE.HALF_WIDTH + 0.22
+          );
+          const aimY = clamp(pred.y, TABLE.SURFACE_Y + 0.14, 1.55);
 
-        // Wind up slightly back before punching forward right at contact
-        const windUpZ = pred.time < 0.22 ? 0.12 * (1 - pred.time / 0.22) : -0.14;
-        this.targetPaddlePos.set(aimX, aimY, SENTINEL.PADDLE_BASE_Z + windUpZ);
+          // Wind up slightly back before punching forward right at contact
+          const windUpZ = pred.time < 0.22 ? 0.12 * (1 - pred.time / 0.22) : -0.14;
+          this.targetPaddlePos.set(aimX, aimY, SENTINEL.PADDLE_BASE_Z + windUpZ);
 
-        if (this.plannedSmash && pred.time < 0.65) {
-          this.smashTelegraph = clamp(1 - pred.time / 0.65, 0.15, 1);
-        } else {
-          this.smashTelegraph = Math.max(0, this.smashTelegraph - dt * 3);
+          if (this.plannedSmash && pred.time < 0.65) {
+            this.smashTelegraph = clamp(1 - pred.time / 0.65, 0.15, 1);
+          } else {
+            this.smashTelegraph = Math.max(0, this.smashTelegraph - dt * 3);
+          }
         }
       }
     } else {
-      // Menacing ready stance matching the iconic reference artwork (paddle held left-center!)
+      // Slower recovery toward ready stance so quick cross-court returns catch MK-I out of position!
+      this.reactionTimer = 0;
       this.smashTelegraph = Math.max(0, this.smashTelegraph - dt * 3.5);
-      const idleX = isPlaying ? Math.sin(this.clock * 1.15) * 0.22 - 0.18 : -0.26 + Math.sin(this.clock * 0.9) * 0.08;
+      const idleX = isPlaying ? Math.sin(this.clock * 1.15) * 0.18 - 0.12 : -0.26 + Math.sin(this.clock * 0.9) * 0.08;
       const idleY = TABLE.SURFACE_Y + 0.34 + Math.sin(this.clock * 1.7) * 0.05;
       const idleZ = SENTINEL.PADDLE_BASE_Z + Math.cos(this.clock * 1.1) * 0.04;
       this.targetPaddlePos.set(idleX, idleY, idleZ);
     }
 
-    // Smooth velocity-limited lateral movement (fair, non-teleporting boss AI)
-    const maxMove = phase.sentinelSpeed * dt;
+    // Smooth velocity-limited lateral movement (slower when passively recovering between shots)
+    const speedLimit = incoming ? phase.sentinelSpeed : phase.sentinelSpeed * 0.38;
+    const maxMove = speedLimit * dt;
     const dx = this.targetPaddlePos.x - this.paddleState.pos.x;
     const dy = this.targetPaddlePos.y - this.paddleState.pos.y;
     const dz = this.targetPaddlePos.z - this.paddleState.pos.z;

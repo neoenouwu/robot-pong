@@ -39,22 +39,27 @@ export const SENTINEL = {
   HOME_POS: { x: 0, y: 2.08, z: -2.42 },
   PADDLE_BASE_Z: -1.36,
   PADDLE_SCALE: 2.1, // Iconic towering boss paddle scale matching the artwork
-  HIT_RADIUS_X: 0.29,
-  HIT_RADIUS_Y: 0.29,
+  HIT_RADIUS_X: 0.195,
+  HIT_RADIUS_Y: 0.195,
 } as const;
 
 export type GameMode = 'arcade' | 'duel';
 export type Difficulty = 'scout' | 'hunter' | 'architect';
+export type StoryStage = 1 | 2;
+
+export const STORY_POINTS_TO_WIN = 5;
 
 export interface ThreatPhaseConfig {
   phase: number;
   name: string;
   minScore: number;
   sentinelSpeed: number; // m/s lateral tracking
+  reactionDelay: number; // seconds before AI reacts to a new player shot
+  spinBlindness: number; // 0..1 fraction of lateral Magnus curve the AI misreads
   returnSpeed: number; // base shot speed
   spinIntensity: number; // rad/s Magnus spin
   smashChance: number; // 0..1 chance on high/mid balls
-  errorMargin: number; // meters — slight human-beatable imperfection
+  errorMargin: number; // meters — realistic lateral positioning error on fast shots
   eyeColor: number;
   accentHex: string;
 }
@@ -64,11 +69,13 @@ export const THREAT_PHASES: readonly ThreatPhaseConfig[] = [
     phase: 1,
     name: 'RECON',
     minScore: 0,
-    sentinelSpeed: 3.1,
-    returnSpeed: 4.5,
+    sentinelSpeed: 1.42,
+    reactionDelay: 0.22,
+    spinBlindness: 0.55,
+    returnSpeed: 4.3,
     spinIntensity: 10,
     smashChance: 0.06,
-    errorMargin: 0.13,
+    errorMargin: 0.16,
     eyeColor: 0xff1e24,
     accentHex: '#00ff6a',
   },
@@ -76,11 +83,13 @@ export const THREAT_PHASES: readonly ThreatPhaseConfig[] = [
     phase: 2,
     name: 'HUNTER',
     minScore: 1800,
-    sentinelSpeed: 4.0,
-    returnSpeed: 5.3,
-    spinIntensity: 18,
+    sentinelSpeed: 1.78,
+    reactionDelay: 0.16,
+    spinBlindness: 0.42,
+    returnSpeed: 5.0,
+    spinIntensity: 17,
     smashChance: 0.18,
-    errorMargin: 0.1,
+    errorMargin: 0.13,
     eyeColor: 0xff2b14,
     accentHex: '#ffb020',
   },
@@ -88,11 +97,13 @@ export const THREAT_PHASES: readonly ThreatPhaseConfig[] = [
     phase: 3,
     name: 'OVERCLOCK',
     minScore: 4800,
-    sentinelSpeed: 4.9,
-    returnSpeed: 6.1,
-    spinIntensity: 26,
-    smashChance: 0.3,
-    errorMargin: 0.075,
+    sentinelSpeed: 2.12,
+    reactionDelay: 0.12,
+    spinBlindness: 0.3,
+    returnSpeed: 5.8,
+    spinIntensity: 25,
+    smashChance: 0.28,
+    errorMargin: 0.1,
     eyeColor: 0xff0d3c,
     accentHex: '#ff4b3e',
   },
@@ -100,11 +111,13 @@ export const THREAT_PHASES: readonly ThreatPhaseConfig[] = [
     phase: 4,
     name: 'ZION BREACH',
     minScore: 9500,
-    sentinelSpeed: 5.8,
-    returnSpeed: 6.9,
-    spinIntensity: 34,
-    smashChance: 0.42,
-    errorMargin: 0.055,
+    sentinelSpeed: 2.45,
+    reactionDelay: 0.08,
+    spinBlindness: 0.2,
+    returnSpeed: 6.5,
+    spinIntensity: 32,
+    smashChance: 0.38,
+    errorMargin: 0.08,
     eyeColor: 0xff0055,
     accentHex: '#ff1f5a',
   },
@@ -115,11 +128,13 @@ export const DUEL_DIFFICULTIES: Record<Difficulty, ThreatPhaseConfig> = {
     phase: 1,
     name: 'SCOUT',
     minScore: 0,
-    sentinelSpeed: 2.9,
-    returnSpeed: 4.4,
+    sentinelSpeed: 1.24,
+    reactionDelay: 0.25,
+    spinBlindness: 0.65,
+    returnSpeed: 4.15,
     spinIntensity: 9,
-    smashChance: 0.08,
-    errorMargin: 0.15,
+    smashChance: 0.07,
+    errorMargin: 0.18,
     eyeColor: 0xff2222,
     accentHex: '#00ff6a',
   },
@@ -127,11 +142,13 @@ export const DUEL_DIFFICULTIES: Record<Difficulty, ThreatPhaseConfig> = {
     phase: 2,
     name: 'HUNTER',
     minScore: 0,
-    sentinelSpeed: 4.15,
-    returnSpeed: 5.4,
-    spinIntensity: 20,
-    smashChance: 0.22,
-    errorMargin: 0.095,
+    sentinelSpeed: 1.68,
+    reactionDelay: 0.17,
+    spinBlindness: 0.45,
+    returnSpeed: 5.05,
+    spinIntensity: 18,
+    smashChance: 0.2,
+    errorMargin: 0.13,
     eyeColor: 0xff1a22,
     accentHex: '#ffb020',
   },
@@ -139,11 +156,13 @@ export const DUEL_DIFFICULTIES: Record<Difficulty, ThreatPhaseConfig> = {
     phase: 4,
     name: 'ARCHITECT',
     minScore: 0,
-    sentinelSpeed: 5.45,
-    returnSpeed: 6.45,
-    spinIntensity: 31,
-    smashChance: 0.36,
-    errorMargin: 0.058,
+    sentinelSpeed: 2.12,
+    reactionDelay: 0.11,
+    spinBlindness: 0.28,
+    returnSpeed: 6.05,
+    spinIntensity: 28,
+    smashChance: 0.34,
+    errorMargin: 0.09,
     eyeColor: 0xff0044,
     accentHex: '#ff1f5a',
   },
@@ -155,4 +174,56 @@ export function getThreatPhaseForScore(score: number): ThreatPhaseConfig {
     if (score >= p.minScore) current = p;
   }
   return current;
+}
+
+export const STORY_STAGE2_CONFIGS: Record<Difficulty, ThreatPhaseConfig> = {
+  scout: {
+    phase: 2,
+    name: 'APEX SENTINEL',
+    minScore: 0,
+    sentinelSpeed: 1.56,
+    reactionDelay: 0.19,
+    spinBlindness: 0.48,
+    returnSpeed: 4.85,
+    spinIntensity: 16,
+    smashChance: 0.18,
+    errorMargin: 0.14,
+    eyeColor: 0xff1626,
+    accentHex: '#ff4b3e',
+  },
+  hunter: {
+    phase: 3,
+    name: 'APEX SENTINEL',
+    minScore: 0,
+    sentinelSpeed: 1.98,
+    reactionDelay: 0.13,
+    spinBlindness: 0.32,
+    returnSpeed: 5.65,
+    spinIntensity: 24,
+    smashChance: 0.28,
+    errorMargin: 0.1,
+    eyeColor: 0xff0d34,
+    accentHex: '#ff2442',
+  },
+  architect: {
+    phase: 4,
+    name: 'APEX ARCHITECT',
+    minScore: 0,
+    sentinelSpeed: 2.38,
+    reactionDelay: 0.08,
+    spinBlindness: 0.2,
+    returnSpeed: 6.45,
+    spinIntensity: 32,
+    smashChance: 0.38,
+    errorMargin: 0.075,
+    eyeColor: 0xff004c,
+    accentHex: '#ff1650',
+  },
+};
+
+export function getStoryPhaseConfig(
+  difficulty: Difficulty,
+  stage: StoryStage
+): ThreatPhaseConfig {
+  return stage === 2 ? STORY_STAGE2_CONFIGS[difficulty] : DUEL_DIFFICULTIES[difficulty];
 }

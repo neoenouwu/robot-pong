@@ -1,10 +1,6 @@
-import type { Difficulty, GameMode } from './game/constants';
+import type { Difficulty, GameMode, StoryStage } from './game/constants';
 import { GameEngine, type HudSnapshot } from './game/gameEngine';
-import {
-  DEFAULT_ROBOT_SKIN_ID,
-  getRobotSkin,
-  ROBOT_SKINS,
-} from './game/robotSkins';
+import { getRobotSkin } from './game/robotSkins';
 import { SceneManager } from './game/sceneManager';
 import {
   fetchLeaderboard,
@@ -14,7 +10,7 @@ import {
 
 const CALLSIGN_STORAGE_KEY = 'sentinel_pong_callsign';
 const ONE_TO_ONE_STORAGE_KEY = 'sentinel_pong_1to1_mode';
-const ROBOT_SKIN_STORAGE_KEY = 'sentinel_pong_robot_skin';
+const STAGE2_UNLOCKED_STORAGE_KEY = 'sentinel_pong_stage2_unlocked';
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -39,10 +35,11 @@ class SentinelPongApp {
   private sceneManager: SceneManager | null = null;
   private engine: GameEngine | null = null;
 
-  private selectedMode: GameMode = 'arcade';
-  private selectedDifficulty: Difficulty = 'hunter';
-  private selectedSkinId: string = DEFAULT_ROBOT_SKIN_ID;
-  private activeLbTab: GameMode = 'arcade';
+  private selectedMode: GameMode = 'duel';
+  private selectedDifficulty: Difficulty = 'scout';
+  private selectedStoryStage: StoryStage = 1;
+  private stage2Unlocked = false;
+  private activeLbTab: GameMode = 'duel';
   private bloomOn = true;
   private lastSnapshot: HudSnapshot | null = null;
   private hasSubmittedRun = false;
@@ -69,6 +66,9 @@ class SentinelPongApp {
   private readonly hudEl = byId<HTMLDivElement>('hud');
   private readonly fxBullet = byId<HTMLDivElement>('fx-bullet-vignette');
   private readonly fxSmashWarn = byId<HTMLDivElement>('fx-smash-warning');
+  private readonly fxLetterboxTop = byId<HTMLDivElement>('fx-letterbox-top');
+  private readonly fxLetterboxBottom = byId<HTMLDivElement>('fx-letterbox-bottom');
+  private readonly cutsceneSkipHint = byId<HTMLDivElement>('cutscene-skip-hint');
 
   private readonly hudScore = byId<HTMLSpanElement>('hud-score');
   private readonly hudCombo = byId<HTMLSpanElement>('hud-combo');
@@ -87,10 +87,8 @@ class SentinelPongApp {
   private readonly btnHudBloom = byId<HTMLButtonElement>('btn-hud-bloom');
 
   private readonly duelDiffWrap = byId<HTMLDivElement>('duel-diff-wrap');
-  private readonly menuRobotPills = byId<HTMLDivElement>('menu-robot-pills');
-  private readonly pauseRobotPills = byId<HTMLDivElement>('pause-robot-pills');
-  private readonly menuSkinStatus = byId<HTMLSpanElement>('menu-skin-status');
-  private readonly pauseSkinStatus = byId<HTMLSpanElement>('pause-skin-status');
+  private readonly storyStageWrap = byId<HTMLDivElement>('story-stage-wrap');
+  private readonly btnRetryStage2 = byId<HTMLButtonElement>('btn-retry-stage2');
   private readonly menuLbList = byId<HTMLDivElement>('menu-lb-list');
   private readonly previewSourceBadge = byId<HTMLSpanElement>('preview-source-badge');
   private readonly modalSourceBadge = byId<HTMLSpanElement>('modal-source-badge');
@@ -111,12 +109,11 @@ class SentinelPongApp {
 
   constructor() {
     try {
-      const savedSkin = window.localStorage.getItem(ROBOT_SKIN_STORAGE_KEY);
-      this.selectedSkinId = getRobotSkin(savedSkin).id;
+      this.stage2Unlocked = window.localStorage.getItem(STAGE2_UNLOCKED_STORAGE_KEY) === '1';
     } catch {
-      this.selectedSkinId = DEFAULT_ROBOT_SKIN_ID;
+      this.stage2Unlocked = false;
     }
-    this.renderRobotSelectorPills();
+    this.syncStageUnlockVisibility();
     this.bindUiEvents();
     const savedName = window.localStorage.getItem(CALLSIGN_STORAGE_KEY);
     if (savedName) {
@@ -125,88 +122,15 @@ class SentinelPongApp {
     void this.initArena();
   }
 
-  private renderRobotSelectorPills(): void {
-    const html = ROBOT_SKINS.map(
-      (skin) => `
-        <button
-          class="robot-skin-btn${skin.id === this.selectedSkinId ? ' active' : ''}"
-          type="button"
-          role="radio"
-          aria-checked="${skin.id === this.selectedSkinId}"
-          data-skin-id="${escapeHtml(skin.id)}"
-          title="${escapeHtml(skin.description)}"
-        >
-          <span>${escapeHtml(skin.name)}</span>
-          <span class="robot-skin-badge">${escapeHtml(skin.badge)}</span>
-        </button>
-      `
-    ).join('');
-
-    this.menuRobotPills.innerHTML = html;
-    this.pauseRobotPills.innerHTML = html;
-
-    const bindContainer = (container: HTMLElement) => {
-      container.querySelectorAll<HTMLButtonElement>('.robot-skin-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const skinId = btn.dataset.skinId;
-          if (skinId) {
-            void this.handleSelectRobotSkin(skinId);
-          }
-        });
-      });
-    };
-    bindContainer(this.menuRobotPills);
-    bindContainer(this.pauseRobotPills);
-  }
-
-  private syncRobotSkinButtons(): void {
-    document.querySelectorAll<HTMLButtonElement>('.robot-skin-btn').forEach((btn) => {
-      const isActive = btn.dataset.skinId === this.selectedSkinId;
-      btn.classList.toggle('active', isActive);
-      btn.setAttribute('aria-checked', String(isActive));
+  private syncStageUnlockVisibility(): void {
+    const showStagePicker = this.selectedMode === 'duel' && this.stage2Unlocked;
+    this.storyStageWrap.classList.toggle('hidden', !showStagePicker);
+    if (!this.stage2Unlocked) {
+      this.selectedStoryStage = 1;
+    }
+    document.querySelectorAll<HTMLButtonElement>('.stage-btn').forEach((btn) => {
+      btn.classList.toggle('active', Number(btn.dataset.stage) === this.selectedStoryStage);
     });
-  }
-
-  private setSkinStatus(msg: string, isErr = false): void {
-    this.menuSkinStatus.textContent = msg;
-    this.pauseSkinStatus.textContent = msg;
-    this.menuSkinStatus.classList.toggle('err', isErr);
-    this.pauseSkinStatus.classList.toggle('err', isErr);
-  }
-
-  private async handleSelectRobotSkin(skinId: string): Promise<void> {
-    const skin = getRobotSkin(skinId);
-    if (!this.sceneManager) {
-      this.selectedSkinId = skin.id;
-      this.syncRobotSkinButtons();
-      return;
-    }
-
-    const prevId = this.selectedSkinId;
-    this.selectedSkinId = skin.id;
-    this.syncRobotSkinButtons();
-    this.setSkinStatus('LOADING GLB...');
-
-    try {
-      const res = await this.sceneManager.setSentinelSkin(skin);
-      if (!res.applied) {
-        // Stale request superseded by a newer click
-        return;
-      }
-      this.selectedSkinId = res.skinId;
-      this.syncRobotSkinButtons();
-      this.setSkinStatus('');
-      try {
-        window.localStorage.setItem(ROBOT_SKIN_STORAGE_KEY, skin.id);
-      } catch {
-        // Ignore storage quota errors
-      }
-    } catch (err) {
-      this.selectedSkinId = prevId;
-      this.syncRobotSkinButtons();
-      const msg = err instanceof Error ? err.message : 'Skin load failed';
-      this.setSkinStatus(msg.slice(0, 48), true);
-    }
   }
 
   private bindUiEvents(): void {
@@ -219,28 +143,42 @@ class SentinelPongApp {
     // Mode selector buttons
     document.querySelectorAll<HTMLButtonElement>('.mode-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const mode = (btn.dataset.mode as GameMode) || 'arcade';
+        const mode = (btn.dataset.mode as GameMode) || 'duel';
         this.selectedMode = mode;
         document.querySelectorAll('.mode-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         this.duelDiffWrap.classList.toggle('hidden', mode !== 'duel');
+        this.syncStageUnlockVisibility();
         void this.refreshMenuLeaderboard(mode);
       });
     });
 
-    // Duel difficulty buttons
+    // Story difficulty buttons
     document.querySelectorAll<HTMLButtonElement>('.diff-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
-        this.selectedDifficulty = (btn.dataset.diff as Difficulty) || 'hunter';
+        this.selectedDifficulty = (btn.dataset.diff as Difficulty) || 'scout';
         document.querySelectorAll('.diff-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
+      });
+    });
+
+    // Unlocked Story Stage selector buttons
+    document.querySelectorAll<HTMLButtonElement>('.stage-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (!this.stage2Unlocked) return;
+        const stg = Number(btn.dataset.stage) === 2 ? 2 : 1;
+        this.selectedStoryStage = stg;
+        this.syncStageUnlockVisibility();
+        void this.sceneManager?.setEnvironmentStage(stg);
       });
     });
 
     byId<HTMLButtonElement>('btn-start-game').addEventListener('click', () => {
       this.hasSubmittedRun = false;
       this.lastSubmittedId = null;
-      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty);
+      const startStage: StoryStage =
+        this.selectedMode === 'duel' && this.stage2Unlocked ? this.selectedStoryStage : 1;
+      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty, startStage);
     });
 
     byId<HTMLButtonElement>('btn-open-leaderboard').addEventListener('click', () => {
@@ -286,10 +224,16 @@ class SentinelPongApp {
 
     byId<HTMLButtonElement>('btn-restart-pause').addEventListener('click', () => {
       this.hasSubmittedRun = false;
-      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty);
+      const restartStage: StoryStage =
+        this.selectedMode === 'duel' && this.lastSnapshot?.storyStage === 2 && this.stage2Unlocked
+          ? 2
+          : 1;
+      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty, restartStage);
     });
 
     byId<HTMLButtonElement>('btn-quit-menu').addEventListener('click', () => {
+      this.selectedStoryStage = 1;
+      this.syncStageUnlockVisibility();
       this.engine?.returnToMenu();
       void this.refreshMenuLeaderboard(this.selectedMode);
     });
@@ -300,13 +244,21 @@ class SentinelPongApp {
     });
 
     // Game Over actions
+    this.btnRetryStage2.addEventListener('click', () => {
+      this.hasSubmittedRun = false;
+      this.lastSubmittedId = null;
+      this.engine?.startNewGame('duel', this.selectedDifficulty, 2);
+    });
+
     byId<HTMLButtonElement>('btn-play-again').addEventListener('click', () => {
       this.hasSubmittedRun = false;
       this.lastSubmittedId = null;
-      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty);
+      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty, 1);
     });
 
     byId<HTMLButtonElement>('btn-go-menu').addEventListener('click', () => {
+      this.selectedStoryStage = 1;
+      this.syncStageUnlockVisibility();
       this.engine?.returnToMenu();
       void this.refreshMenuLeaderboard(this.selectedMode);
     });
@@ -339,17 +291,38 @@ class SentinelPongApp {
         });
       }
 
+      // Always boot into exact Stage 1 (MK-I Classic + indoor cathedral) — zero Stage 2 spoilers!
       await this.sceneManager.loadModels((pct, label) => {
         this.loadingBar.style.width = `${Math.max(12, pct)}%`;
         this.loadingStatus.textContent = `Loaded 3D model: ${label} (${pct}%)`;
-      }, getRobotSkin(this.selectedSkinId));
+      }, getRobotSkin('classic'));
 
-      this.engine = new GameEngine(this.sceneManager, (snap) => this.renderHud(snap));
+      this.engine = new GameEngine(
+        this.sceneManager,
+        (snap) => this.renderHud(snap),
+        {
+          initialStage2Unlocked: this.stage2Unlocked,
+          onStage2Unlocked: () => {
+            this.stage2Unlocked = true;
+            try {
+              window.localStorage.setItem(STAGE2_UNLOCKED_STORAGE_KEY, '1');
+            } catch {
+              // Ignore storage quota errors
+            }
+            this.syncStageUnlockVisibility();
+          },
+        }
+      );
       this.engine.setReadyMenu();
       this.engine.startLoop();
 
       this.screenLoading.classList.add('hidden');
       void this.refreshMenuLeaderboard(this.selectedMode);
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('preview') === 'cutscene') {
+        this.engine.triggerCutscenePreview();
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.loadingStatus.textContent = 'Initialization halted.';
@@ -363,6 +336,7 @@ class SentinelPongApp {
     this.lastSnapshot = snap;
 
     const isMenu = snap.state === 'MENU';
+    const isCutscene = snap.state === 'CUTSCENE';
     const isPlaying =
       snap.state === 'SERVE' || snap.state === 'RALLY' || snap.state === 'POINT_PAUSE';
     const isPaused = snap.state === 'PAUSED';
@@ -372,6 +346,11 @@ class SentinelPongApp {
     this.hudEl.classList.toggle('hidden', !isPlaying && !isPaused);
     this.screenPause.classList.toggle('hidden', !isPaused);
     this.screenGameOver.classList.toggle('hidden', !isGameOver);
+
+    // Cinematic letterbox bars during Stage 1 -> Stage 2 transformation cutscene
+    this.fxLetterboxTop.classList.toggle('active', isCutscene);
+    this.fxLetterboxBottom.classList.toggle('active', isCutscene);
+    this.cutsceneSkipHint.classList.toggle('hidden', !(isCutscene && snap.canSkipCutscene));
 
     // Vignettes
     this.fxBullet.classList.toggle('active', snap.bulletTimeActive);
@@ -410,7 +389,10 @@ class SentinelPongApp {
       }
       this.hudArcadeShields.innerHTML = pips;
     } else {
-      this.hudPhaseBadge.textContent = `BOSS DUEL // ${snap.difficulty.toUpperCase()}`;
+      this.hudPhaseBadge.textContent =
+        snap.storyStage === 2
+          ? `STAGE 2 // ${snap.threatPhase.name}`
+          : `STORY MODE // ${snap.difficulty.toUpperCase()}`;
       this.hudPhaseBadge.style.color = snap.threatPhase.accentHex;
       this.hudArcadeShields.classList.add('hidden');
       this.hudDuelScore.classList.remove('hidden');
@@ -451,17 +433,28 @@ class SentinelPongApp {
 
     if (snap.mode === 'duel') {
       const won = snap.winner === 'player';
-      this.goEyebrow.textContent = won ? 'SENTINEL NEUTRALIZED' : 'MATCH TERMINATED';
-      this.goTitle.textContent = won ? 'VICTORY IN THE CONSTRUCT' : 'SENTINEL PREVAILS';
+      const isStage2 = snap.storyStage === 2;
+      this.goEyebrow.textContent = won
+        ? 'MACHINE CITY CONQUERED'
+        : isStage2
+          ? 'STAGE 2 TERMINATED'
+          : 'MATCH TERMINATED';
+      this.goTitle.textContent = won
+        ? 'APEX SENTINEL DEFEATED'
+        : isStage2
+          ? 'APEX SENTINEL PREVAILS'
+          : 'SENTINEL PREVAILS';
       this.goTitle.style.color = won ? 'var(--emerald)' : 'var(--crimson)';
-      this.goFourthLabel.textContent = 'MATCH SCORE';
+      this.goFourthLabel.textContent = isStage2 ? 'STAGE 2 SCORE' : 'MATCH SCORE';
       this.goFourthVal.textContent = `${snap.playerPoints}-${snap.sentinelPoints}`;
+      this.btnRetryStage2.classList.toggle('hidden', !(isStage2 && !won && this.stage2Unlocked));
     } else {
       this.goEyebrow.textContent = 'OVERDRIVE RUN COMPLETE';
       this.goTitle.textContent = 'SYSTEM BREACH';
       this.goTitle.style.color = 'var(--crimson)';
       this.goFourthLabel.textContent = 'MAX PHASE';
       this.goFourthVal.textContent = `${snap.maxPhaseReached}`;
+      this.btnRetryStage2.classList.add('hidden');
     }
 
     this.goScore.textContent = snap.score.toLocaleString();

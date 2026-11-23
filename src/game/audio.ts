@@ -277,4 +277,105 @@ export class SoundEngine {
       osc.stop(t + 0.22);
     });
   }
+
+  public playBossRumble(): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(68, now);
+    osc.frequency.exponentialRampToValueAtTime(34, now + 1.15);
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(260, now);
+    filter.frequency.exponentialRampToValueAtTime(95, now + 1.15);
+
+    gain.gain.setValueAtTime(0.02, now);
+    gain.gain.linearRampToValueAtTime(0.28, now + 0.35);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 1.25);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 1.3);
+  }
+
+  public playBossCrush(): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+
+    // Massive sub-bass impact drop
+    const sub = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(140, now);
+    sub.frequency.exponentialRampToValueAtTime(26, now + 0.85);
+    subGain.gain.setValueAtTime(0.55, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+    sub.connect(subGain);
+    subGain.connect(this.masterGain);
+    sub.start(now);
+    sub.stop(now + 1.0);
+
+    // Metallic crunch noise burst
+    const sampleRate = this.ctx.sampleRate;
+    const len = Math.floor(sampleRate * 0.65);
+    const noiseBuf = this.ctx.createBuffer(1, len, sampleRate);
+    const ch = noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      const env = Math.pow(1 - i / len, 1.8);
+      ch[i] = (Math.random() * 2 - 1) * env;
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = noiseBuf;
+    const band = this.ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.setValueAtTime(950, now);
+    band.frequency.exponentialRampToValueAtTime(180, now + 0.6);
+    band.Q.value = 1.4;
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.42, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+
+    noise.connect(band);
+    band.connect(nGain);
+    nGain.connect(this.masterGain);
+    noise.start(now);
+    noise.stop(now + 0.68);
+  }
+
+  public playCityExpand(): void {
+    if (!this.ctx || !this.masterGain || this.muted) return;
+    const now = this.ctx.currentTime;
+
+    // Deep rising megastructure chord (D2 + A2 + F3 + A3)
+    const freqs = [73.42, 110.0, 174.61, 220.0];
+    freqs.forEach((f, idx) => {
+      if (!this.ctx || !this.masterGain) return;
+      const osc = this.ctx.createOscillator();
+      const filter = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+
+      osc.type = idx < 2 ? 'sawtooth' : 'triangle';
+      osc.frequency.setValueAtTime(f * 0.96, now);
+      osc.frequency.exponentialRampToValueAtTime(f, now + 1.4);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(180, now);
+      filter.frequency.exponentialRampToValueAtTime(1400, now + 1.8);
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(idx < 2 ? 0.13 : 0.08, now + 0.9);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(now);
+      osc.stop(now + 2.6);
+    });
+  }
 }

@@ -9,6 +9,7 @@ import type { BallState, Vec3 } from './physics';
 export function createMatrixRainWalls(): {
   group: THREE.Group;
   update: (dt: number, intensity: number) => void;
+  setExpansion: (progress: number) => void;
 } {
   const group = new THREE.Group();
   group.name = 'MatrixRainWalls';
@@ -116,6 +117,23 @@ export function createMatrixRainWalls(): {
     update(dt: number, intensity: number) {
       uniforms.uTime.value += dt;
       uniforms.uIntensity.value = intensity;
+    },
+    setExpansion(progress: number) {
+      const t = Math.max(0, Math.min(1, progress));
+      // At t = 0: exact Stage 1 enclosure (back z = -11.8, sides x = ±7.6, scale 1)
+      // At t = 1: colossal distant skyline rain curtain behind cityscape_expansion.glb
+      const backScale = 1 + t * 3.1;
+      const sideScale = 1 + t * 2.9;
+      const yPos = 6.8 + t * 15.5;
+
+      backWall.position.set(0, yPos, -11.8 - t * 47.0);
+      backWall.scale.set(backScale, backScale, 1);
+
+      leftWall.position.set(-7.6 - t * 30.5, yPos, -3.5 - t * 21.0);
+      leftWall.scale.set(sideScale, sideScale, 1);
+
+      rightWall.position.set(7.6 + t * 30.5, yPos, -3.5 - t * 21.0);
+      rightWall.scale.set(sideScale, sideScale, 1);
     },
   };
 }
@@ -516,6 +534,11 @@ export class GameplayVFX {
   private readonly bonusRadius = 0.22;
   private bonusTimer = 0;
 
+  // Cinematic Boss-Destruction 3D Shockwave Ring
+  private readonly shockwaveMesh: THREE.Mesh;
+  private readonly shockwaveMat: THREE.MeshBasicMaterial;
+  private shockwaveAge = 99;
+
   constructor() {
     this.group.name = 'GameplayVFX';
 
@@ -637,6 +660,28 @@ export class GameplayVFX {
 
     // 8. 3D floating point popups beside paddles & rings
     this.group.add(this.floatingText.group);
+
+    // 9. Expanding 3D crimson shockwave ring for boss destruction cutscene
+    const swGeo = new THREE.RingGeometry(0.18, 0.34, 48);
+    this.shockwaveMat = new THREE.MeshBasicMaterial({
+      color: 0xff2842,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    this.shockwaveMesh = new THREE.Mesh(swGeo, this.shockwaveMat);
+    this.shockwaveMesh.visible = false;
+    this.group.add(this.shockwaveMesh);
+  }
+
+  public spawnShockwave(pos: Vec3, colorHex = 0xff2842): void {
+    this.shockwaveMesh.position.set(pos.x, pos.y, pos.z);
+    this.shockwaveMat.color.setHex(colorHex);
+    this.shockwaveAge = 0;
+    this.shockwaveMesh.visible = true;
+    this.shockwaveMesh.scale.setScalar(1);
   }
 
   public spawnFloatingPoints(
@@ -838,6 +883,17 @@ export class GameplayVFX {
       if (this.bonusTimer <= 0) {
         this.hideBonusRing();
       }
+    }
+
+    // 7. Animate boss destruction shockwave ring
+    if (this.shockwaveAge < 0.95) {
+      this.shockwaveAge += realDt;
+      const p = Math.min(1, this.shockwaveAge / 0.95);
+      this.shockwaveMesh.visible = true;
+      this.shockwaveMesh.scale.setScalar(1 + p * 18);
+      this.shockwaveMat.opacity = Math.pow(1 - p, 1.5) * 0.9;
+    } else {
+      this.shockwaveMesh.visible = false;
     }
   }
 }

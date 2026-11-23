@@ -9,6 +9,7 @@ const generators = [
   'build-sentinel-reference.mjs',
   'build-props.mjs',
   'build-arena.mjs',
+  'build-cityscape.mjs',
 ];
 
 for (const script of generators) {

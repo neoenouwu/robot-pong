@@ -14,8 +14,10 @@ import {
 } from '../src/game/physics';
 import { projectNdcToZPlane } from '../src/game/sceneManager';
 import { computeFloatingPopupOrigin } from '../src/game/matrixEffects';
+import { evaluateStoryMatchOutcome } from '../src/game/gameEngine';
 import { DEFAULT_ROBOT_SKIN_ID, getRobotSkin, ROBOT_SKINS } from '../src/game/robotSkins';
-import { PLAYER_PADDLE, SENTINEL, TABLE } from '../src/game/constants';
+import { DUEL_DIFFICULTIES, PLAYER_PADDLE, SENTINEL, STORY_STAGE2_CONFIGS, TABLE } from '../src/game/constants';
+import { SentinelController } from '../src/game/sentinelRig';
 import {
   LeaderboardStore,
   sanitizeCallsign,
@@ -33,9 +35,9 @@ function makePaddle(x: number, y: number, z: number): PaddleState {
 }
 
 describe('Constructed 3D GLB Model Integrity', () => {
-  it('verifies all 6 binary GLB models exist, conform to glTF 2.0, and expose required nodes', () => {
+  it('verifies all 7 binary GLB models exist, conform to glTF 2.0, and expose required nodes', () => {
     const results = verifyAllModels();
-    expect(results.length).toBe(6);
+    expect(results.length).toBe(7);
     for (const model of results) {
       expect(model.triangles).toBeGreaterThan(300);
       expect(model.nodes).toBeGreaterThan(1);
@@ -50,6 +52,11 @@ describe('Constructed 3D GLB Model Integrity', () => {
     expect(sentinelRef).toBeDefined();
     expect(sentinelRef!.triangles).toBeGreaterThan(8000);
     expect(sentinelRef!.textures).toBeGreaterThanOrEqual(2);
+
+    const cityscape = results.find((r) => r.file === 'cityscape_expansion.glb');
+    expect(cityscape).toBeDefined();
+    expect(cityscape!.triangles).toBeGreaterThan(8000);
+    expect(cityscape!.textures).toBeGreaterThanOrEqual(2);
   });
 
   it('resolves robot skin registry with classic as default and graceful fallback on unknown IDs', () => {
@@ -58,6 +65,35 @@ describe('Constructed 3D GLB Model Integrity', () => {
     expect(getRobotSkin(null).id).toBe('classic');
     expect(getRobotSkin('does-not-exist').id).toBe('classic');
     expect(getRobotSkin('reference').modelUrl).toBe('/models/sentinel_reference.glb');
+  });
+
+  it('evaluates Story Mode Stage 1 -> Stage 2 surprise cutscene & deuce rules accurately', () => {
+    // 4-4 deuce continues
+    expect(evaluateStoryMatchOutcome(1, 4, 4).action).toBe('continue');
+    expect(evaluateStoryMatchOutcome(1, 5, 4).action).toBe('continue');
+    // Winning Stage 1 (5-3 or 6-4) triggers the surprise Stage 2 cutscene!
+    expect(evaluateStoryMatchOutcome(1, 5, 3)).toEqual({
+      action: 'trigger_stage2_cutscene',
+      winner: 'player',
+    });
+    expect(evaluateStoryMatchOutcome(1, 6, 4)).toEqual({
+      action: 'trigger_stage2_cutscene',
+      winner: 'player',
+    });
+    // Losing Stage 1 ends game cleanly without spoiling Stage 2
+    expect(evaluateStoryMatchOutcome(1, 2, 5)).toEqual({
+      action: 'game_over',
+      winner: 'sentinel',
+    });
+    // Winning or losing Stage 2 ends the full Story Mode match
+    expect(evaluateStoryMatchOutcome(2, 5, 2)).toEqual({
+      action: 'game_over',
+      winner: 'player',
+    });
+    expect(evaluateStoryMatchOutcome(2, 3, 5)).toEqual({
+      action: 'game_over',
+      winner: 'sentinel',
+    });
   });
 });
 
@@ -268,6 +304,55 @@ describe('3D Table Tennis Physics Engine', () => {
     expect(leftPaddle.x).toBeLessThan(-0.5);
     expect(rightPaddle.y).toBeGreaterThan(1.1);
     expect(stacked.y).toBeGreaterThan(rightPaddle.y);
+  });
+
+  it('keeps MK-I SCOUT & Stage 2 APEX genuinely beatable via cross-court smashes while still returning straight shots', () => {
+    const simulateShot = (
+      phaseCfg: typeof DUEL_DIFFICULTIES.scout,
+      sentinelStartX: number,
+      targetX: number,
+      flightTime: number,
+      isSmash: boolean
+    ): 'returned' | 'player_winner' | 'other' => {
+      const dummyRoot = new THREE.Group();
+      const dummyPaddle = new THREE.Group();
+      const ctrl = new SentinelController(dummyRoot, dummyPaddle);
+      ctrl.paddleState.pos.x = sentinelStartX;
+      ctrl.paddleState.prevPos.x = sentinelStartX;
+
+      const ball = createBallState();
+      const origin = { x: 0.1, y: TABLE.SURFACE_Y + 0.3, z: 1.32 };
+      ball.pos = { ...origin };
+      ball.spin = { x: isSmash ? 22 : 10, y: 0, z: 0 };
+      ball.vel = solveBallisticShot(origin, targetX, -0.95, flightTime, ball.spin);
+      ball.active = true;
+      ball.lastHitBy = 'player';
+      ball.isPlayerSmash = isSmash;
+      ctrl.notifyPlayerHit();
+
+      const outOfWayPlayer = makePaddle(1.1, 1.0, PLAYER_PADDLE.BASE_Z);
+      for (let i = 0; i < 160; i++) {
+        ctrl.update(1 / 60, ball, phaseCfg, true);
+        const evs = stepPhysics(ball, 1 / 60, {
+          playerPaddle: outOfWayPlayer,
+          sentinelPaddle: ctrl.paddleState,
+        });
+        for (const ev of evs) {
+          if (ev.type === 'paddle_hit' && ev.by === 'sentinel') return 'returned';
+          if (ev.type === 'point_end' && ev.winner === 'player') return 'player_winner';
+        }
+      }
+      return 'other';
+    };
+
+    // 1) Straight medium shot right at MK-I SCOUT is cleanly returned so rallies stay fun
+    expect(simulateShot(DUEL_DIFFICULTIES.scout, 0.0, 0.02, 0.62, false)).toBe('returned');
+
+    // 2) Cross-court Power Smash away from MK-I SCOUT's corner cleanly scores a winner!
+    expect(simulateShot(DUEL_DIFFICULTIES.scout, -0.58, 0.62, 0.42, true)).toBe('player_winner');
+
+    // 3) Cross-court Power Smash also beats Stage 2 APEX SENTINEL (scout tier)!
+    expect(simulateShot(STORY_STAGE2_CONFIGS.scout, -0.58, 0.64, 0.38, true)).toBe('player_winner');
   });
 });
 

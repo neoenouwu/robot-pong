@@ -1,11 +1,13 @@
 import {
-  DUEL_DIFFICULTIES,
+  getStoryPhaseConfig,
   getThreatPhaseForScore,
   PLAYER_PADDLE,
   SENTINEL,
+  STORY_POINTS_TO_WIN,
   TABLE,
   type Difficulty,
   type GameMode,
+  type StoryStage,
   type ThreatPhaseConfig,
 } from './constants';
 import { SoundEngine } from './audio';
@@ -27,13 +29,44 @@ export type GamePhaseState =
   | 'SERVE'
   | 'RALLY'
   | 'POINT_PAUSE'
+  | 'CUTSCENE'
   | 'PAUSED'
   | 'GAME_OVER';
+
+export interface StoryOutcome {
+  action: 'continue' | 'trigger_stage2_cutscene' | 'game_over';
+  winner: Side | null;
+}
+
+/**
+ * Pure Story Mode match progression evaluator (First to 5, win by 2):
+ * Winning Stage 1 triggers the surprise Stage 2 boss-destruction & cityscape cutscene.
+ */
+export function evaluateStoryMatchOutcome(
+  stage: StoryStage,
+  playerPoints: number,
+  sentinelPoints: number
+): StoryOutcome {
+  const reachedTarget =
+    playerPoints >= STORY_POINTS_TO_WIN || sentinelPoints >= STORY_POINTS_TO_WIN;
+  const lead = Math.abs(playerPoints - sentinelPoints);
+  if (!reachedTarget || lead < 2) {
+    return { action: 'continue', winner: null };
+  }
+  const winner: Side = playerPoints > sentinelPoints ? 'player' : 'sentinel';
+  if (stage === 1 && winner === 'player') {
+    return { action: 'trigger_stage2_cutscene', winner: 'player' };
+  }
+  return { action: 'game_over', winner };
+}
 
 export interface HudSnapshot {
   state: GamePhaseState;
   mode: GameMode;
   difficulty: Difficulty;
+  storyStage: StoryStage;
+  stage2Unlocked: boolean;
+  canSkipCutscene: boolean;
   score: number;
   rally: number;
   bestRally: number;
@@ -61,8 +94,17 @@ export class GameEngine {
   public readonly audio = new SoundEngine();
 
   private state: GamePhaseState = 'LOADING';
-  private mode: GameMode = 'arcade';
-  private difficulty: Difficulty = 'hunter';
+  private mode: GameMode = 'duel';
+  private difficulty: Difficulty = 'scout';
+  private storyStage: StoryStage = 1;
+  private stage2Unlocked = false;
+  private canSkipCutscene = false;
+  private cutsceneElapsed = 0;
+  private cutsceneReady = false;
+  private cutsceneFinishing = false;
+  private readonly cutsceneDuration = 5.75;
+  private prePauseState: GamePhaseState = 'SERVE';
+  private onStage2Unlocked?: () => void;
 
   private ball: BallState = createBallState();
   private playerPaddle: PaddleState = {
@@ -120,9 +162,15 @@ export class GameEngine {
   private readonly onKeyUpBound: (e: KeyboardEvent) => void;
   private readonly onVisibilityBound: () => void;
 
-  constructor(sceneManager: SceneManager, onHudUpdate: (snap: HudSnapshot) => void) {
+  constructor(
+    sceneManager: SceneManager,
+    onHudUpdate: (snap: HudSnapshot) => void,
+    opts: { initialStage2Unlocked?: boolean; onStage2Unlocked?: () => void } = {}
+  ) {
     this.sceneManager = sceneManager;
     this.onHudUpdate = onHudUpdate;
+    this.stage2Unlocked = Boolean(opts.initialStage2Unlocked);
+    this.onStage2Unlocked = opts.onStage2Unlocked;
 
     this.onPointerMoveBound = (e) => this.handlePointerMove(e);
     this.onPointerDownBound = (e) => this.handlePointerDown(e);
@@ -135,7 +183,10 @@ export class GameEngine {
     this.onKeyDownBound = (e) => this.handleKeyDown(e);
     this.onKeyUpBound = (e) => this.handleKeyUp(e);
     this.onVisibilityBound = () => {
-      if (document.hidden && (this.state === 'RALLY' || this.state === 'SERVE')) {
+      if (
+        document.hidden &&
+        (this.state === 'RALLY' || this.state === 'SERVE' || this.state === 'CUTSCENE')
+      ) {
         this.pauseGame();
       }
     };
@@ -174,10 +225,22 @@ export class GameEngine {
     this.rafId = requestAnimationFrame(tick);
   }
 
-  public startNewGame(mode: GameMode, difficulty: Difficulty = this.difficulty): void {
+  public startNewGame(
+    mode: GameMode,
+    difficulty: Difficulty = this.difficulty,
+    startStage: StoryStage = 1
+  ): void {
     this.audio.unlock();
     this.mode = mode;
     this.difficulty = difficulty;
+    const effectiveStage: StoryStage =
+      mode === 'duel' && startStage === 2 && this.stage2Unlocked ? 2 : 1;
+    this.storyStage = effectiveStage;
+    this.cutsceneElapsed = 0;
+    this.cutsceneReady = false;
+    this.cutsceneFinishing = false;
+    this.canSkipCutscene = false;
+
     this.score = 0;
     this.rally = 0;
     this.bestRally = 0;
@@ -191,19 +254,32 @@ export class GameEngine {
     this.bulletTimeActive = false;
     this.bulletTimeRequested = false;
     this.autoBulletTimeLatched = false;
-    this.maxPhaseReached = 1;
+    this.maxPhaseReached = effectiveStage === 2 ? 2 : 1;
     this.winner = null;
     this.lastPointReason = '';
     this.bonusCooldown = 4.5;
     this.sceneManager.vfx.hideBonusRing();
     this.sceneManager.vfx.clearTrail();
     this.sceneManager.vfx.clearFloatingPoints();
+
+    void this.sceneManager.setEnvironmentStage(effectiveStage);
+    if (mode === 'duel' && effectiveStage === 1) {
+      // Preload Stage 2 silently in background so boss-destruction cutscene has zero hitch
+      void this.sceneManager.preloadStage2Assets();
+    }
+
     this.enterServeState();
     this.pushHud(true);
   }
 
   public pauseGame(): void {
-    if (this.state === 'RALLY' || this.state === 'SERVE' || this.state === 'POINT_PAUSE') {
+    if (
+      this.state === 'RALLY' ||
+      this.state === 'SERVE' ||
+      this.state === 'POINT_PAUSE' ||
+      this.state === 'CUTSCENE'
+    ) {
+      this.prePauseState = this.state;
       this.state = 'PAUSED';
       this.autoBulletTimeLatched = false;
       this.setBulletTime(false);
@@ -213,7 +289,11 @@ export class GameEngine {
 
   public resumeGame(): void {
     if (this.state === 'PAUSED') {
-      this.state = this.ball.active ? 'RALLY' : 'SERVE';
+      if (this.prePauseState === 'CUTSCENE') {
+        this.state = 'CUTSCENE';
+      } else {
+        this.state = this.ball.active ? 'RALLY' : 'SERVE';
+      }
       this.lastFrameTime = performance.now();
       this.pushHud(true);
     }
@@ -221,6 +301,11 @@ export class GameEngine {
 
   public returnToMenu(): void {
     this.setBulletTime(false);
+    this.autoBulletTimeLatched = false;
+    this.cutsceneReady = false;
+    this.cutsceneFinishing = false;
+    this.storyStage = 1;
+    void this.sceneManager.setEnvironmentStage(1);
     this.setReadyMenu();
   }
 
@@ -255,7 +340,7 @@ export class GameEngine {
 
   public getCurrentThreatPhase(): ThreatPhaseConfig {
     if (this.mode === 'duel') {
-      return DUEL_DIFFICULTIES[this.difficulty];
+      return getStoryPhaseConfig(this.difficulty, this.storyStage);
     }
     const p = getThreatPhaseForScore(this.score);
     if (p.phase > this.maxPhaseReached) {
@@ -264,6 +349,58 @@ export class GameEngine {
       this.sceneManager.addCameraShake(0.05);
     }
     return p;
+  }
+
+  private startStage2Cutscene(persistUnlock = true): void {
+    const wasAlreadyUnlocked = this.stage2Unlocked;
+    if (persistUnlock) {
+      this.stage2Unlocked = true;
+      this.onStage2Unlocked?.();
+    }
+    this.canSkipCutscene = wasAlreadyUnlocked;
+
+    this.state = 'CUTSCENE';
+    this.cutsceneElapsed = 0;
+    this.cutsceneReady = false;
+    this.cutsceneFinishing = false;
+    this.ball.active = false;
+    this.autoBulletTimeLatched = false;
+    this.setBulletTime(false);
+    this.sceneManager.vfx.clearTrail();
+    this.sceneManager.vfx.clearFloatingPoints();
+    this.pushHud(true);
+
+    void this.sceneManager.beginStage2Cutscene().then(() => {
+      if (this.state === 'CUTSCENE') {
+        this.cutsceneReady = true;
+      }
+    });
+  }
+
+  public triggerCutscenePreview(): void {
+    this.mode = 'duel';
+    this.storyStage = 1;
+    this.score = 1500;
+    this.startStage2Cutscene(false);
+  }
+
+  private completeStage2Cutscene(): void {
+    if (this.cutsceneFinishing) return;
+    this.cutsceneFinishing = true;
+    this.storyStage = 2;
+    this.maxPhaseReached = Math.max(this.maxPhaseReached, 2);
+    this.playerPoints = 0;
+    this.sentinelPoints = 0;
+    this.totalDuelPoints = 0;
+    this.server = 'player';
+    void this.sceneManager.finishStage2Cutscene().then(() => {
+      if (this.state === 'CUTSCENE') {
+        this.cutsceneReady = false;
+        this.cutsceneFinishing = false;
+        this.enterServeState();
+        this.pushHud(true);
+      }
+    });
   }
 
   public getComboMultiplier(): number {
@@ -363,6 +500,32 @@ export class GameEngine {
 
   private step(realDt: number, nowMs: number): void {
     const phase = this.getCurrentThreatPhase();
+
+    // Dedicated real-time 3D Story Mode Boss-Destruction & Cityscape-Expansion Cutscene
+    if (this.state === 'CUTSCENE') {
+      if (this.cutsceneReady) {
+        this.cutsceneElapsed += realDt;
+        const stage2Phase = getStoryPhaseConfig(this.difficulty, 2);
+        this.sceneManager.updateStage2Cutscene(
+          this.cutsceneElapsed,
+          realDt,
+          this.audio,
+          this.ball,
+          stage2Phase
+        );
+        if (this.cutsceneElapsed >= this.cutsceneDuration) {
+          this.completeStage2Cutscene();
+        }
+      } else {
+        // Still finishing silent preload — keep rendering smoothly
+        this.sceneManager.updateVisuals(0, realDt, this.ball, this.playerPaddle, {
+          isMenu: false,
+          bulletTime: false,
+          phaseNumber: phase.phase,
+        });
+      }
+      return;
+    }
 
     // Unlimited Bullet Time management (manual RMB/Shift OR automatic near-miss reflex in 1:1 mode)
     if (this.state === 'RALLY') {
@@ -606,24 +769,36 @@ export class GameEngine {
       // Alternate who serves so player gets to receive menacing Sentinel serves too
       this.server = winner === 'player' ? 'sentinel' : 'player';
     } else {
-      // Classic Boss Duel: First to 11, win by 2
+      // Story Mode: Stage 1 (First to 5, win by 2) -> Surprise Stage 2 Cutscene -> Stage 2 (First to 5, win by 2)
       this.totalDuelPoints += 1;
-      const reached11 = this.playerPoints >= 11 || this.sentinelPoints >= 11;
-      const lead = Math.abs(this.playerPoints - this.sentinelPoints);
-      if (reached11 && lead >= 2) {
-        this.winner = this.playerPoints > this.sentinelPoints ? 'player' : 'sentinel';
+      const outcome = evaluateStoryMatchOutcome(
+        this.storyStage,
+        this.playerPoints,
+        this.sentinelPoints
+      );
+
+      if (outcome.action === 'trigger_stage2_cutscene') {
+        this.score += 1500;
+        this.startStage2Cutscene();
+        return;
+      }
+
+      if (outcome.action === 'game_over') {
+        this.winner = outcome.winner;
         if (this.winner === 'player') {
           const diffBonus =
-            this.difficulty === 'architect' ? 3500 : this.difficulty === 'hunter' ? 2000 : 1000;
-          const marginBonus = (this.playerPoints - this.sentinelPoints) * 280;
+            this.difficulty === 'architect' ? 4000 : this.difficulty === 'hunter' ? 2500 : 1400;
+          const marginBonus = (this.playerPoints - this.sentinelPoints) * 320;
           this.score += diffBonus + marginBonus;
         }
         this.state = 'GAME_OVER';
         this.pushHud(true);
         return;
       }
-      // Standard table tennis service rotation: every 2 points (every 1 at deuce 10-10+)
-      if (this.playerPoints >= 10 && this.sentinelPoints >= 10) {
+
+      // Service rotation: every 2 points (every 1 at deuce 4-4+)
+      const deuceThreshold = STORY_POINTS_TO_WIN - 1;
+      if (this.playerPoints >= deuceThreshold && this.sentinelPoints >= deuceThreshold) {
         this.server = this.server === 'player' ? 'sentinel' : 'player';
       } else if (this.totalDuelPoints % 2 === 0) {
         this.server = this.server === 'player' ? 'sentinel' : 'player';
@@ -784,7 +959,9 @@ export class GameEngine {
     if (e.code === 'Space') {
       e.preventDefault();
       this.audio.unlock();
-      if (this.state === 'SERVE' && this.server === 'player') {
+      if (this.state === 'CUTSCENE' && this.canSkipCutscene && this.cutsceneReady) {
+        this.completeStage2Cutscene();
+      } else if (this.state === 'SERVE' && this.server === 'player') {
         this.triggerPlayerServe();
       } else if (this.state === 'RALLY') {
         this.isChargingSmash = true;
@@ -794,7 +971,11 @@ export class GameEngine {
     } else if (e.code === 'Escape' || e.code === 'KeyP') {
       if (this.state === 'PAUSED') {
         this.resumeGame();
-      } else if (this.state === 'RALLY' || this.state === 'SERVE') {
+      } else if (
+        this.state === 'RALLY' ||
+        this.state === 'SERVE' ||
+        this.state === 'CUTSCENE'
+      ) {
         this.pauseGame();
       }
     } else if (e.code === 'KeyM') {
@@ -825,6 +1006,9 @@ export class GameEngine {
       state: this.state,
       mode: this.mode,
       difficulty: this.difficulty,
+      storyStage: this.storyStage,
+      stage2Unlocked: this.stage2Unlocked,
+      canSkipCutscene: this.canSkipCutscene,
       score: Math.round(this.score),
       rally: this.rally,
       bestRally: this.bestRally,

@@ -114,6 +114,10 @@ export const REQUIRED_MODELS = {
     minTriangles: 2000,
     requiredNodes: ['ArenaRoot'],
   },
+  'cityscape_expansion.glb': {
+    minTriangles: 8000,
+    requiredNodes: ['CityscapeRoot', 'CityTowers', 'SkyBridges', 'MegaCables', 'CityAbyss'],
+  },
 };
 
 export function verifyAllModels(modelsDir = MODELS_DIR) {
