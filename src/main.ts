@@ -86,8 +86,11 @@ class RobotPongApp {
   private readonly hudHealthRobot = byId<HTMLDivElement>('hud-health-robot');
   private readonly hudSmashBar = byId<HTMLDivElement>('hud-smash-bar');
   private readonly hudServePrompt = byId<HTMLDivElement>('hud-serve-prompt');
-  private readonly btnHudMute = byId<HTMLButtonElement>('btn-hud-mute');
-  private readonly btnHudBloom = byId<HTMLButtonElement>('btn-hud-bloom');
+  private readonly hudHealth = byId<HTMLDivElement>('hud-health');
+  private readonly btnToggleSfx = byId<HTMLButtonElement>('btn-toggle-sfx');
+  private readonly btnToggleBloom = byId<HTMLButtonElement>('btn-toggle-bloom');
+  private lastMuted: boolean | null = null;
+  private focusResumeOnPause = false;
 
   private readonly duelDiffWrap = byId<HTMLDivElement>('duel-diff-wrap');
   private readonly storyStageWrap = byId<HTMLDivElement>('story-stage-wrap');
@@ -184,19 +187,23 @@ class RobotPongApp {
       this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty, startStage);
     });
 
-    // HUD controls
-    this.btnHudMute.addEventListener('click', () => {
+    // Pause menu toggles
+    this.btnToggleSfx.addEventListener('click', () => {
       this.engine?.toggleMute();
     });
 
-    this.btnHudBloom.addEventListener('click', () => {
+    this.btnToggleBloom.addEventListener('click', () => {
       this.bloomOn = !this.bloomOn;
       this.sceneManager?.setBloomEnabled(this.bloomOn);
-      this.btnHudBloom.textContent = this.bloomOn ? 'BLOOM ON' : 'BLOOM OFF';
+      this.setToggleState(this.btnToggleBloom, this.bloomOn);
     });
 
-    byId<HTMLButtonElement>('btn-hud-pause').addEventListener('click', () => {
+    const btnHudPause = byId<HTMLButtonElement>('btn-hud-pause');
+    btnHudPause.addEventListener('click', () => {
       this.engine?.pauseGame();
+      // Leave the icon so Space (serve) cannot re-trigger it; focus moves into the menu once shown.
+      btnHudPause.blur();
+      this.focusResumeOnPause = true;
     });
 
     // Pause controls
@@ -327,6 +334,10 @@ class RobotPongApp {
     this.screenMenu.classList.toggle('hidden', !isMenu);
     this.hudEl.classList.toggle('hidden', !isPlaying && !isPaused);
     this.screenPause.classList.toggle('hidden', !isPaused);
+    if (this.focusResumeOnPause) {
+      this.focusResumeOnPause = false;
+      if (isPaused) byId<HTMLButtonElement>('btn-resume').focus();
+    }
     this.screenGameOver.classList.toggle('hidden', !isGameOver);
 
     // Cinematic letterbox bars during Stage 1 -> Stage 2 transformation cutscene
@@ -344,7 +355,10 @@ class RobotPongApp {
     this.hudRally.textContent = String(snap.rally);
     this.hudBestRally.textContent = String(snap.bestRally);
     this.hudSmashBar.style.width = `${Math.round(snap.smashCharge * 100)}%`;
-    this.btnHudMute.textContent = snap.muted ? 'SFX OFF' : 'SFX ON';
+    if (this.lastMuted !== snap.muted) {
+      this.lastMuted = snap.muted;
+      this.setToggleState(this.btnToggleSfx, !snap.muted);
+    }
     if (this.lastSavedOneToOne !== snap.oneToOneMode) {
       this.lastSavedOneToOne = snap.oneToOneMode;
       try {
@@ -402,22 +416,32 @@ class RobotPongApp {
     this.prevState = snap.state;
   }
 
+  private setToggleState(btn: HTMLButtonElement, on: boolean): void {
+    btn.setAttribute('aria-checked', String(on));
+    const state = btn.querySelector('.toggle-state');
+    if (state) state.textContent = on ? 'ON' : 'OFF';
+  }
+
   private buildHealthSegments(bar: HTMLElement): void {
-    const track = bar.querySelector<HTMLElement>('.health-track');
-    if (!track) throw new Error('Missing .health-track in health bar');
-    track.replaceChildren();
+    const bezel = bar.querySelector<HTMLElement>('.health-bezel');
+    if (!bezel) throw new Error('Missing .health-bezel in health bar');
+    bezel.replaceChildren();
+    // Segment 0 is the innermost one (next to the centre gap); health is lost from the outer end.
     for (let i = 0; i < STORY_POINTS_TO_WIN; i++) {
       const seg = document.createElement('span');
       seg.className = 'health-seg';
-      track.appendChild(seg);
+      const ghost = document.createElement('span');
+      ghost.className = 'health-ghost';
+      seg.appendChild(ghost);
+      bezel.appendChild(seg);
     }
     // Clear one-shot reaction classes so they do not replay when the HUD is shown again.
     // Hiding the HUD mid-animation (e.g. on the match point) cancels it instead of ending it.
     const clearReaction = (event: AnimationEvent): void => {
-      if (event.animationName === 'healthHit') {
+      if (event.animationName.startsWith('healthHit')) {
         bar.classList.remove('is-hit');
-      } else if (event.animationName === 'healthDrain') {
-        (event.target as HTMLElement).classList.remove('is-draining');
+      } else if (event.animationName.startsWith('healthGhost')) {
+        (event.target as HTMLElement).closest('.health-seg')?.classList.remove('is-draining');
       }
     };
     bar.addEventListener('animationend', clearReaction);
@@ -433,8 +457,7 @@ class RobotPongApp {
 
   private setStoryHudVisible(visible: boolean): void {
     this.hudEl.classList.toggle('hud--story', visible);
-    this.hudHealthPlayer.classList.toggle('hidden', !visible);
-    this.hudHealthRobot.classList.toggle('hidden', !visible);
+    this.hudHealth.classList.toggle('hidden', !visible);
     if (!visible) {
       this.lastStoryPoints = null;
       this.lastHealthKey = '';
