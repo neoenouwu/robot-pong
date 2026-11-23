@@ -1,4 +1,4 @@
-import type { GameMode } from '../game/constants';
+import type { Difficulty, GameMode } from '../game/constants';
 
 export interface LeaderboardEntry {
   id: string;
@@ -26,7 +26,7 @@ export interface SubmitScorePayload {
   bestRally: number;
   maxPhase: number;
   perfectHits: number;
-  difficulty: string;
+  difficulty: Difficulty | 'overdrive';
   matchScore?: string;
 }
 

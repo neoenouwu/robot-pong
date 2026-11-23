@@ -3,16 +3,16 @@ import { TABLE } from './constants';
 import type { BallState, Vec3 } from './physics';
 
 /**
- * Creates towering animated emerald Matrix digital-rain server light walls
+ * Creates towering animated emerald data-rain server light walls
  * positioned behind the 3D industrial steel pillars of arena_structure.glb.
  */
-export function createMatrixRainWalls(): {
+export function createDataRainWalls(): {
   group: THREE.Group;
   update: (dt: number, intensity: number) => void;
   setExpansion: (progress: number) => void;
 } {
   const group = new THREE.Group();
-  group.name = 'MatrixRainWalls';
+  group.name = 'DataRainWalls';
 
   const uniforms = {
     uTime: { value: 0 },
@@ -45,7 +45,7 @@ export function createMatrixRainWalls(): {
     }
 
     void main() {
-      // Dense vertical server columns of falling Matrix code
+      // Dense vertical server columns of falling code
       vec2 grid = vec2(72.0, 52.0);
       vec2 cellId = floor(vUv * grid);
       vec2 cellUv = fract(vUv * grid);

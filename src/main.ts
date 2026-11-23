@@ -62,7 +62,7 @@ class RobotPongApp {
   private readonly screenContextLost = byId<HTMLDivElement>('screen-context-lost');
 
   private readonly hudEl = byId<HTMLDivElement>('hud');
-  private readonly fxBullet = byId<HTMLDivElement>('fx-bullet-vignette');
+  private readonly fxSlowMo = byId<HTMLDivElement>('fx-slowmo-vignette');
   private readonly fxSmashWarn = byId<HTMLDivElement>('fx-smash-warning');
   private readonly fxLetterboxTop = byId<HTMLDivElement>('fx-letterbox-top');
   private readonly fxLetterboxBottom = byId<HTMLDivElement>('fx-letterbox-bottom');
@@ -77,11 +77,9 @@ class RobotPongApp {
   private readonly hudDuelScore = byId<HTMLDivElement>('hud-duel-score');
   private readonly hudPPts = byId<HTMLElement>('hud-p-pts');
   private readonly hudRPts = byId<HTMLElement>('hud-r-pts');
-  private readonly hudFocusBar = byId<HTMLDivElement>('hud-focus-bar');
   private readonly hudSmashBar = byId<HTMLDivElement>('hud-smash-bar');
   private readonly hudServePrompt = byId<HTMLDivElement>('hud-serve-prompt');
   private readonly btnHudMute = byId<HTMLButtonElement>('btn-hud-mute');
-  private readonly btnHudOneToOne = byId<HTMLButtonElement>('btn-hud-one-to-one');
   private readonly btnHudBloom = byId<HTMLButtonElement>('btn-hud-bloom');
 
   private readonly duelDiffWrap = byId<HTMLDivElement>('duel-diff-wrap');
@@ -180,10 +178,6 @@ class RobotPongApp {
     // HUD controls
     this.btnHudMute.addEventListener('click', () => {
       this.engine?.toggleMute();
-    });
-
-    this.btnHudOneToOne.addEventListener('click', () => {
-      this.engine?.toggleOneToOneMode();
     });
 
     this.btnHudBloom.addEventListener('click', () => {
@@ -332,7 +326,7 @@ class RobotPongApp {
     this.cutsceneSkipHint.classList.toggle('hidden', !(isCutscene && snap.canSkipCutscene));
 
     // Vignettes
-    this.fxBullet.classList.toggle('active', snap.bulletTimeActive);
+    this.fxSlowMo.classList.toggle('active', snap.slowMoActive);
     this.fxSmashWarn.classList.toggle('active', snap.smashWarning && isPlaying);
 
     // Numbers & bars
@@ -340,12 +334,8 @@ class RobotPongApp {
     this.hudCombo.textContent = `x${snap.comboMultiplier}`;
     this.hudRally.textContent = String(snap.rally);
     this.hudBestRally.textContent = String(snap.bestRally);
-    this.hudFocusBar.style.width = `${snap.focus}%`;
     this.hudSmashBar.style.width = `${Math.round(snap.smashCharge * 100)}%`;
     this.btnHudMute.textContent = snap.muted ? 'SFX OFF' : 'SFX ON';
-    this.btnHudOneToOne.textContent = snap.oneToOneMode ? '1:1 ON' : '1:1 OFF';
-    this.btnHudOneToOne.classList.toggle('active', snap.oneToOneMode);
-    this.btnHudOneToOne.setAttribute('aria-pressed', String(snap.oneToOneMode));
     if (this.lastSavedOneToOne !== snap.oneToOneMode) {
       this.lastSavedOneToOne = snap.oneToOneMode;
       try {

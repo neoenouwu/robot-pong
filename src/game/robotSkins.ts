@@ -6,7 +6,6 @@ export interface RobotSkinDefinition {
   id: string;
   name: string;
   badge: string;
-  description: string;
   modelUrl: string;
   armArcStyle: 'classic' | 'high_coil';
 }
@@ -18,7 +17,6 @@ export const ROBOT_SKINS: readonly RobotSkinDefinition[] = [
     id: 'classic',
     name: 'MK-I CLASSIC',
     badge: 'DEFAULT',
-    description: 'Original sleek armored carapace with glowing crimson ring segments.',
     modelUrl: '/models/robot.glb',
     armArcStyle: 'classic',
   },
@@ -26,7 +24,6 @@ export const ROBOT_SKINS: readonly RobotSkinDefinition[] = [
     id: 'reference',
     name: 'CONCEPT 1:1',
     badge: 'ARTWORK',
-    description: 'Taller charred patchwork dome, dense wire beard, clustered Matrix optics, and interlocking centipede tentacles.',
     modelUrl: '/models/robot_reference.glb',
     armArcStyle: 'high_coil',
   },

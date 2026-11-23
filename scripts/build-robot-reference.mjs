@@ -8,7 +8,7 @@
  *   patchwork seam straps, recessed mechanical under-ribs, forged bolts, cavernous craggy
  *   mechanical jaw/chin undercarriage, and a dense vertical "beard" of 32 hanging wires,
  *   rigid metallic antennae, and drooping cable tendrils (0.55m–0.88m).
- * - Iconic asymmetric Matrix crimson optical constellation: deeply recessed `MainEyeCore`
+ * - Iconic asymmetric crimson optical constellation: deeply recessed `MainEyeCore`
  *   (~0.24m aperture) inside a dark stepped gunmetal camera-barrel bezel with fiery pure
  *   crimson-red halo + blinding white-crimson core + 16 asymmetric `SubEyes` across the
  *   left/right brow-cheeks and recessed dark ventral chin pipes.
@@ -822,7 +822,7 @@ function createCharredIronArmorTextures(size = 512) {
 }
 
 /**
- * Pure fiery Matrix Crimson Camera-Optic Iris (deep molten crimson outer halo +
+ * Pure fiery Crimson Camera-Optic Iris (deep molten crimson outer halo +
  * blazing white-crimson pinpoint lens center — zero yellow/orange muddiness!).
  */
 function createCrimsonOpticTextures(size = 256) {
@@ -862,7 +862,7 @@ function createCrimsonOpticTextures(size = 256) {
                 88 * lensRing1 +
                 58 * lensRing2) *
               rimMask;
-            // Keep green very low outside pinpointCore so halo stays pure fiery Matrix crimson!
+            // Keep green very low outside pinpointCore so halo stays pure fiery crimson!
             let cg = (4 * moltenHalo + 14 * hotInner + 225 * pinpointCore + 12 * lensRing1) * rimMask;
             let cb = (8 * moltenHalo + 24 * hotInner + 218 * pinpointCore + 14 * lensRing1) * rimMask;
 
@@ -1485,7 +1485,7 @@ function buildCarapace(mats, shoulderSockets) {
     }
   }
 
-  // 6. Iconic Clustered Matrix Crimson Eye Array (Front Face +Z)
+  // 6. Iconic Clustered Crimson Eye Array (Front Face +Z)
   // 6a. MainEyeCore: Deeply recessed ~0.24m aperture diameter optic in bolted camera-barrel bezel
   const mainEyePos = new THREE.Vector3(0, -0.028, 0.728);
   const mainEyeRot = new THREE.Euler(0.07, 0, 0);
@@ -1556,7 +1556,7 @@ function buildCarapace(mats, shoulderSockets) {
     carapace.add(mainEyeMesh);
   }
 
-  // 6b. Asymmetric Matrix Eye Constellation (`SubEyes` Group — 16 lenses matching reference photo!)
+  // 6b. Asymmetric Eye Constellation (`SubEyes` Group — 16 lenses matching reference photo!)
   const subEyesGroup = new THREE.Group();
   subEyesGroup.name = 'SubEyes';
 

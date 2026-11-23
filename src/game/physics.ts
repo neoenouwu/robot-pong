@@ -200,22 +200,22 @@ export function predictBallAtZ(ball: BallState, targetZ: number): {
   return { willReach: false, time: 0, x: px, y: py };
 }
 
-export interface AutoBulletTimeInput {
+export interface AutoSlowMoInput {
   oneToOneMode: boolean;
   ball: BallState;
   playerPaddle: PaddleState;
   alreadyLatched: boolean;
 }
 
-export const AUTO_BULLET_TIME_NEAR_MISS_MIN_RATIO = 0.96;
-export const AUTO_BULLET_TIME_NEAR_MISS_MAX_RATIO = 2.35;
+export const AUTO_SLOW_MO_NEAR_MISS_MIN_RATIO = 0.96;
+export const AUTO_SLOW_MO_NEAR_MISS_MAX_RATIO = 2.35;
 
 /**
- * Determines whether 1:1 Auto Bullet Time should engage or stay latched
+ * Determines whether 1:1 Auto Slow-Mo should engage or stay latched
  * when an incoming ball's predicted crossing point is just outside the paddle
  * (within the near-miss forgiveness ring) rather than far away or already lined up.
  */
-export function evaluateAutoBulletTime(input: AutoBulletTimeInput): {
+export function evaluateAutoSlowMo(input: AutoSlowMoInput): {
   active: boolean;
   newlyTriggered: boolean;
 } {
@@ -258,8 +258,8 @@ export function evaluateAutoBulletTime(input: AutoBulletTimeInput): {
 
   // Only reward near-misses within range of the paddle — not far-away misreads or already-lined-up hits
   if (
-    missRatio > AUTO_BULLET_TIME_NEAR_MISS_MIN_RATIO &&
-    missRatio <= AUTO_BULLET_TIME_NEAR_MISS_MAX_RATIO
+    missRatio > AUTO_SLOW_MO_NEAR_MISS_MIN_RATIO &&
+    missRatio <= AUTO_SLOW_MO_NEAR_MISS_MAX_RATIO
   ) {
     return { active: true, newlyTriggered: true };
   }

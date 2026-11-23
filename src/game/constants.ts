@@ -109,7 +109,7 @@ export const THREAT_PHASES: readonly ThreatPhaseConfig[] = [
   },
   {
     phase: 4,
-    name: 'ZION BREACH',
+    name: 'MELTDOWN',
     minScore: 9500,
     robotSpeed: 2.45,
     reactionDelay: 0.08,

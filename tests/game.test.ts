@@ -7,14 +7,14 @@ import {
   checkSweptPaddleHit,
   computeEdgeJumpTargetX,
   createBallState,
-  evaluateAutoBulletTime,
+  evaluateAutoSlowMo,
   predictBallAtZ,
   solveBallisticShot,
   stepPhysics,
   type PaddleState,
 } from '../src/game/physics';
 import { computeGhostPaddleOpacity, projectNdcToZPlane } from '../src/game/sceneManager';
-import { computeFloatingPopupOrigin } from '../src/game/matrixEffects';
+import { computeFloatingPopupOrigin } from '../src/game/visualEffects';
 import { evaluateStoryMatchOutcome } from '../src/game/gameEngine';
 import { DEFAULT_ROBOT_SKIN_ID, getRobotSkin, ROBOT_SKINS } from '../src/game/robotSkins';
 import { DUEL_DIFFICULTIES, PLAYER_PADDLE, ROBOT, STORY_STAGE2_CONFIGS, TABLE } from '../src/game/constants';
@@ -214,7 +214,7 @@ describe('3D Table Tennis Physics Engine', () => {
     expect(behind).toBeNull();
   });
 
-  it('triggers 1:1 Auto Bullet Time only inside the near-miss ring (not when far away or lined up)', () => {
+  it('triggers 1:1 Auto Slow-Mo only inside the near-miss ring (not when far away or lined up)', () => {
     const ball = createBallState();
     // Incoming ball ~0.18s from player strike plane heading to x = 0.45, y = 1.05
     ball.pos = { x: 0.45, y: 1.05, z: PLAYER_PADDLE.BASE_Z - 0.8 };
@@ -230,7 +230,7 @@ describe('3D Table Tennis Physics Engine', () => {
     const alignedPaddle = makePaddle(0.45, 1.05, PLAYER_PADDLE.BASE_Z);
 
     // 1) 1:1 ON + paddle just outside hitbox (near miss) -> triggers!
-    const trig = evaluateAutoBulletTime({
+    const trig = evaluateAutoSlowMo({
       oneToOneMode: true,
       ball,
       playerPaddle: nearMissPaddle,
@@ -240,7 +240,7 @@ describe('3D Table Tennis Physics Engine', () => {
     expect(trig.newlyTriggered).toBe(true);
 
     // 2) 1:1 ON + paddle far away from trajectory -> does NOT trigger!
-    const tooFar = evaluateAutoBulletTime({
+    const tooFar = evaluateAutoSlowMo({
       oneToOneMode: true,
       ball,
       playerPaddle: farMissPaddle,
@@ -249,7 +249,7 @@ describe('3D Table Tennis Physics Engine', () => {
     expect(tooFar.active).toBe(false);
 
     // 3) 1:1 OFF -> does NOT auto-trigger
-    const disabled = evaluateAutoBulletTime({
+    const disabled = evaluateAutoSlowMo({
       oneToOneMode: false,
       ball,
       playerPaddle: nearMissPaddle,
@@ -258,7 +258,7 @@ describe('3D Table Tennis Physics Engine', () => {
     expect(disabled.active).toBe(false);
 
     // 4) Paddle already lined up to hit -> does NOT trigger
-    const linedUp = evaluateAutoBulletTime({
+    const linedUp = evaluateAutoSlowMo({
       oneToOneMode: true,
       ball,
       playerPaddle: alignedPaddle,
@@ -267,7 +267,7 @@ describe('3D Table Tennis Physics Engine', () => {
     expect(linedUp.active).toBe(false);
 
     // 5) Once latched, stays smoothly latched while aligning, then releases once ball passes paddle
-    const held = evaluateAutoBulletTime({
+    const held = evaluateAutoSlowMo({
       oneToOneMode: true,
       ball,
       playerPaddle: alignedPaddle,
@@ -277,7 +277,7 @@ describe('3D Table Tennis Physics Engine', () => {
     expect(held.newlyTriggered).toBe(false);
 
     ball.pos.z = PLAYER_PADDLE.BASE_Z + 0.15;
-    const passed = evaluateAutoBulletTime({
+    const passed = evaluateAutoSlowMo({
       oneToOneMode: true,
       ball,
       playerPaddle: nearMissPaddle,
@@ -483,17 +483,42 @@ describe('3D Table Tennis Physics Engine', () => {
 
 describe('Leaderboard Persistence & Validation', () => {
   it('sanitizes XSS/invalid callsigns and rejects out-of-range payloads', () => {
-    expect(sanitizeCallsign('<script>neo!</script>')).toBe('SCRIPTNEOSCRIPT');
-    expect(sanitizeCallsign('  trinity_99  ')).toBe('TRINITY_99');
+    expect(sanitizeCallsign('<script>ace!</script>')).toBe('SCRIPTACESCRIPT');
+    expect(sanitizeCallsign('  player_99  ')).toBe('PLAYER_99');
 
     const badEmpty = validateEntryPayload({ name: '   ', mode: 'arcade', score: 100 });
     expect(badEmpty.ok).toBe(false);
 
-    const badScore = validateEntryPayload({ name: 'NEO', mode: 'arcade', score: -50 });
+    const badScore = validateEntryPayload({ name: 'ACE', mode: 'arcade', score: -50 });
     expect(badScore.ok).toBe(false);
 
-    const badMode = validateEntryPayload({ name: 'NEO', mode: 'invalid', score: 500 });
+    const badMode = validateEntryPayload({ name: 'ACE', mode: 'invalid', score: 500 });
     expect(badMode.ok).toBe(false);
+  });
+
+  it('accepts only the current difficulty values, rejects anything else, and defaults only when omitted', () => {
+    const base = { name: 'ACE', mode: 'duel', score: 500 };
+
+    for (const diff of ['easy', 'medium', 'hard', 'overdrive']) {
+      const res = validateEntryPayload({ ...base, difficulty: diff });
+      expect(res.ok).toBe(true);
+      expect(res.entry?.difficulty).toBe(diff);
+    }
+    // Case-insensitive, stored lowercase
+    expect(validateEntryPayload({ ...base, difficulty: 'HARD' }).entry?.difficulty).toBe('hard');
+
+    // Unrecognised values are rejected outright — never stored, never remapped to a default
+    for (const bad of ['nightmare', 'retired-tier', '', ' easy', 3, true, {}, ['easy']]) {
+      const res = validateEntryPayload({ ...base, difficulty: bad });
+      expect(res.ok).toBe(false);
+      expect(res.entry).toBeUndefined();
+      expect(res.error).toMatch(/Difficulty/);
+    }
+
+    // Omitted (or null) difficulty keeps the per-mode default
+    expect(validateEntryPayload(base).entry?.difficulty).toBe('medium');
+    expect(validateEntryPayload({ ...base, difficulty: null }).entry?.difficulty).toBe('medium');
+    expect(validateEntryPayload({ ...base, mode: 'arcade' }).entry?.difficulty).toBe('overdrive');
   });
 
   it('starts empty of generated scores, persists & ranks personal scores, strips legacy seeds, and recovers from corrupt JSON', async () => {

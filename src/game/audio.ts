@@ -1,7 +1,7 @@
 /**
  * Procedural Web Audio API sound engine for Robot Pong.
  * Synthesizes authentic ping-pong ball acoustics, mechanical robot cues,
- * Bullet Time dilation bass drops, and cyberpunk UI stingers with zero external assets.
+ * Slow-Mo dilation bass drops, and cyberpunk UI stingers with zero external assets.
  */
 export class SoundEngine {
   private ctx: AudioContext | null = null;
@@ -81,7 +81,7 @@ export class SoundEngine {
     osc2.start();
   }
 
-  public setBulletTimeAudio(active: boolean): void {
+  public setSlowMoAudio(active: boolean): void {
     if (!this.ctx || !this.masterGain || this.muted) return;
     const now = this.ctx.currentTime;
 

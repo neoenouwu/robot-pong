@@ -1,8 +1,8 @@
 /**
- * Procedural 3D Model Generator: Stage 2 Matrix Machine Cityscape Expansion
+ * Procedural 3D Model Generator: Stage 2 Emerald Megacity Expansion
  * Outputs: public/models/cityscape_expansion.glb
  *
- * Constructs the colossal expanding cyberpunk Machine City megastructure framing
+ * Constructs the colossal expanding cyberpunk megacity megastructure framing
  * and towering beyond the Stage 1 indoor server cathedral (`arena_structure.glb`):
  *
  *   CRITICAL SPATIAL CONTRACT (100% Unobstructed Stage 1 Keep-Out Volume):
@@ -17,7 +17,7 @@
  *      open to z = -34m, culminated by colossal stepped monolith towers at
  *      z = -38..-54m). Features chamfered armor shafts, external exo-buttress
  *      ribs, cantilevered utility pods, antenna crowns, vertical recessed
- *      glowing emerald Matrix server-window light bands, and warm amber lower
+ *      glowing emerald server-window light bands, and warm amber lower
  *      industrial light ledges.
  *   2. `SkyBridges`  — Multi-level open steel cross-truss skybridges, elevated
  *      pipe viaducts, and mega-gantries spanning across the canyon at
@@ -268,7 +268,7 @@ function makeCondenserRing(innerR, outerR, height, sides = 8) {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Procedural PBR Textures (256x256 megastructure steel & Matrix windows,
+// 2. Procedural PBR Textures (256x256 megastructure steel & server windows,
 //    plus compact 128x128 warm amber work-bays & armored cable sheathing)
 // ---------------------------------------------------------------------------
 
@@ -393,11 +393,11 @@ function buildMegaSteelTextures() {
 }
 
 /**
- * Texture Set 2 (256x256): Glowing emerald Matrix server-window facade
+ * Texture Set 2 (256x256): Glowing emerald server-window facade
  * Crisp pixelated vertical code/server-rack light bands in vivid emerald #1aff7a
  * segmented by dark horizontal structural mullions and vertical dividers.
  */
-function buildMatrixWindowTextures() {
+function buildServerWindowTextures() {
   const W = 256;
   const H = 256;
   const COLS = 32;
@@ -615,7 +615,7 @@ function buildMegaCableTextures() {
 
 function createCityMaterials() {
   const steelTex = buildMegaSteelTextures();
-  const matrixTex = buildMatrixWindowTextures();
+  const windowTex = buildServerWindowTextures();
   const amberBayTex = buildAmberBayTextures();
   const cableTex = buildMegaCableTextures();
 
@@ -643,25 +643,25 @@ function createCityMaterials() {
   });
   attachPBRTextures(abyssDeckMat, steelTex);
 
-  const matrixWindowMat = new THREE.MeshStandardMaterial({
-    name: 'MatrixServerWindows',
+  const serverWindowMat = new THREE.MeshStandardMaterial({
+    name: 'ServerWindows',
     color: 0xffffff,
     roughness: 0.22,
     metalness: 0.65,
     emissive: 0xffffff,
     emissiveIntensity: 3.2,
   });
-  attachPBRTextures(matrixWindowMat, matrixTex);
+  attachPBRTextures(serverWindowMat, windowTex);
 
-  const matrixWindowAltMat = new THREE.MeshStandardMaterial({
-    name: 'MatrixServerWindowsAlt',
+  const serverWindowAltMat = new THREE.MeshStandardMaterial({
+    name: 'ServerWindowsAlt',
     color: 0xffffff,
     roughness: 0.24,
     metalness: 0.62,
     emissive: 0xd4ffea,
     emissiveIntensity: 2.85,
   });
-  attachPBRTextures(matrixWindowAltMat, matrixTex);
+  attachPBRTextures(serverWindowAltMat, windowTex);
 
   const amberBayMat = new THREE.MeshStandardMaterial({
     name: 'AmberIndustrialBays',
@@ -703,8 +703,8 @@ function createCityMaterials() {
     megaSteelMat,
     darkFrameMat,
     abyssDeckMat,
-    matrixWindowMat,
-    matrixWindowAltMat,
+    serverWindowMat,
+    serverWindowAltMat,
     amberBayMat,
     amberLedgeMat,
     amberBeaconMat,
@@ -718,7 +718,7 @@ function createCityMaterials() {
 //    so skyscraper silhouettes step dramatically from 22m up to 44m.
 // ---------------------------------------------------------------------------
 
-function instantiateArchetype(name, arch, mats, pos, scale = [1, 1, 1], yaw = 0, useAltMatrix = false) {
+function instantiateArchetype(name, arch, mats, pos, scale = [1, 1, 1], yaw = 0, useAltWindows = false) {
   const g = new THREE.Group();
   g.name = name;
   g.position.set(pos[0], pos[1], pos[2]);
@@ -735,9 +735,9 @@ function instantiateArchetype(name, arch, mats, pos, scale = [1, 1, 1], yaw = 0,
     m.name = `${name}_Frame`;
     g.add(m);
   }
-  if (arch.matrixGeo) {
-    const m = new THREE.Mesh(arch.matrixGeo, useAltMatrix ? mats.matrixWindowAltMat : mats.matrixWindowMat);
-    m.name = `${name}_Matrix`;
+  if (arch.windowGeo) {
+    const m = new THREE.Mesh(arch.windowGeo, useAltWindows ? mats.serverWindowAltMat : mats.serverWindowMat);
+    m.name = `${name}_Windows`;
     g.add(m);
   }
   if (arch.amberBayGeo) {
@@ -754,12 +754,12 @@ function instantiateArchetype(name, arch, mats, pos, scale = [1, 1, 1], yaw = 0,
 }
 
 /**
- * Archetype A: CathedralServerSpire (Stepped Matrix Server Monolith)
+ * Archetype A: CathedralServerSpire (Stepped Server Monolith)
  */
 function buildArchetypeCathedralSpire() {
   const steel = [];
   const frame = [];
-  const matrix = [];
+  const windowBoxes = [];
   const amberBay = [];
   const amberLedge = [];
 
@@ -846,15 +846,15 @@ function buildArchetypeCathedralSpire() {
     addCyl(frame, 0.13, 0.13, 19.5, 6, [pxPipe, 12.0, pzPipe], [0, 0, 0], [1, 3]);
   }
 
-  // Recessed vertical glowing emerald Matrix data-window strips on all 4 faces
+  // Recessed vertical glowing emerald data-window strips on all 4 faces
   for (let side = 0; side < 4; side++) {
     const ang = (side * Math.PI) / 2;
     const c = Math.cos(ang);
     const s = Math.sin(ang);
     for (const off of [-0.82, 0.82]) {
-      addBox(matrix, [0.09, 13.7, 1.24], [c * 2.28 - s * off, 15.05, s * 2.28 + c * off], [0, -ang, 0], [0.55, 2.6]);
+      addBox(windowBoxes, [0.09, 13.7, 1.24], [c * 2.28 - s * off, 15.05, s * 2.28 + c * off], [0, -ang, 0], [0.55, 2.6]);
     }
-    addBox(matrix, [0.09, 5.5, 1.95], [c * 1.72, 25.55, s * 1.72], [0, -ang, 0], [0.75, 1.25]);
+    addBox(windowBoxes, [0.09, 5.5, 1.95], [c * 1.72, 25.55, s * 1.72], [0, -ang, 0], [0.75, 1.25]);
   }
 
   // Lower-tier warm amber industrial bay panels & horizontal warm light ledges
@@ -886,7 +886,7 @@ function buildArchetypeCathedralSpire() {
   return {
     steelGeo: mergeSafe(steel),
     frameGeo: mergeSafe(frame),
-    matrixGeo: mergeSafe(matrix),
+    windowGeo: mergeSafe(windowBoxes),
     amberBayGeo: mergeSafe(amberBay),
     amberLedgeGeo: mergeSafe(amberLedge),
     maxHalfX: 3.35,
@@ -895,12 +895,12 @@ function buildArchetypeCathedralSpire() {
 }
 
 /**
- * Archetype B: TwinFinDataTower (Split-Blade Matrix Server Megatower)
+ * Archetype B: TwinFinDataTower (Split-Blade Server Megatower)
  */
 function buildArchetypeTwinFinTower() {
   const steel = [];
   const frame = [];
-  const matrix = [];
+  const windowBoxes = [];
   const amberBay = [];
   const amberLedge = [];
 
@@ -911,17 +911,17 @@ function buildArchetypeTwinFinTower() {
     steel.push(placeGeom(makeChamferedShaft(1.55, 3.4, 0.25, 2.4, 29.2, [0.2, 0.25]), [sx, 0, 0]));
   }
 
-  // Central recessed Matrix server core glowing between the twin blades
+  // Central recessed server core glowing between the twin blades
   addBox(steel, [1.52, 20.6, 2.95], [0, 17.5, 0], [0, 0, 0], [0.2, 0.3]);
-  addBox(matrix, [1.56, 20.4, 0.10], [0, 17.5, 1.54], [0, 0, 0], [0.7, 3.5]);
-  addBox(matrix, [1.56, 20.4, 0.10], [0, 17.5, -1.54], [0, 0, 0], [0.7, 3.5]);
+  addBox(windowBoxes, [1.56, 20.4, 0.10], [0, 17.5, 1.54], [0, 0, 0], [0.7, 3.5]);
+  addBox(windowBoxes, [1.56, 20.4, 0.10], [0, 17.5, -1.54], [0, 0, 0], [0.7, 3.5]);
 
   for (const sx of [-1, 1]) {
     const faceX = sx * 2.72;
-    addBox(matrix, [0.10, 19.6, 1.32], [faceX, 17.6, -1.05], [0, 0, 0], [0.5, 3.4]);
-    addBox(matrix, [0.10, 19.6, 1.32], [faceX, 17.6, 1.05], [0, 0, 0], [0.5, 3.4]);
+    addBox(windowBoxes, [0.10, 19.6, 1.32], [faceX, 17.6, -1.05], [0, 0, 0], [0.5, 3.4]);
+    addBox(windowBoxes, [0.10, 19.6, 1.32], [faceX, 17.6, 1.05], [0, 0, 0], [0.5, 3.4]);
     for (const sz of [-1, 1]) {
-      addBox(matrix, [0.85, 19.4, 0.10], [sx * 1.72, 17.6, sz * 2.28], [0, 0, 0], [0.35, 3.4]);
+      addBox(windowBoxes, [0.85, 19.4, 0.10], [sx * 1.72, 17.6, sz * 2.28], [0, 0, 0], [0.35, 3.4]);
     }
   }
 
@@ -990,7 +990,7 @@ function buildArchetypeTwinFinTower() {
   return {
     steelGeo: mergeSafe(steel),
     frameGeo: mergeSafe(frame),
-    matrixGeo: mergeSafe(matrix),
+    windowGeo: mergeSafe(windowBoxes),
     amberBayGeo: mergeSafe(amberBay),
     amberLedgeGeo: mergeSafe(amberLedge),
     maxHalfX: 3.35,
@@ -1004,7 +1004,7 @@ function buildArchetypeTwinFinTower() {
 function buildArchetypeReactorCitadel() {
   const steel = [];
   const frame = [];
-  const matrix = [];
+  const windowBoxes = [];
   const amberBay = [];
   const amberLedge = [];
 
@@ -1042,7 +1042,7 @@ function buildArchetypeReactorCitadel() {
   }
   pylonFin.dispose();
 
-  // 8 Tall vertical glowing emerald Matrix light-column bays
+  // 8 Tall vertical glowing emerald light-column bays
   for (let i = 0; i < 8; i++) {
     const ang = (i * Math.PI) / 4;
     const c = Math.cos(ang);
@@ -1050,9 +1050,9 @@ function buildArchetypeReactorCitadel() {
     const isCardinal = i % 2 === 0;
     const dist = isCardinal ? 2.38 : 2.34;
     const stripW = isCardinal ? 1.15 : 0.72;
-    addBox(matrix, [0.10, 15.6, stripW], [c * dist, 15.8, s * dist], [0, -ang, 0], [0.45, 2.9]);
+    addBox(windowBoxes, [0.10, 15.6, stripW], [c * dist, 15.8, s * dist], [0, -ang, 0], [0.45, 2.9]);
     if (isCardinal) {
-      addBox(matrix, [0.10, 5.1, 0.92], [c * 1.84, 26.7, s * 1.84], [0, -ang, 0], [0.4, 1.1]);
+      addBox(windowBoxes, [0.10, 5.1, 0.92], [c * 1.84, 26.7, s * 1.84], [0, -ang, 0], [0.4, 1.1]);
     }
   }
 
@@ -1079,7 +1079,7 @@ function buildArchetypeReactorCitadel() {
   return {
     steelGeo: mergeSafe(steel),
     frameGeo: mergeSafe(frame),
-    matrixGeo: mergeSafe(matrix),
+    windowGeo: mergeSafe(windowBoxes),
     amberBayGeo: mergeSafe(amberBay),
     amberLedgeGeo: mergeSafe(amberLedge),
     maxHalfX: 3.3,
@@ -1093,7 +1093,7 @@ function buildArchetypeReactorCitadel() {
 function buildArchetypeSteppedZiggurat() {
   const steel = [];
   const frame = [];
-  const matrix = [];
+  const windowBoxes = [];
   const amberBay = [];
   const amberLedge = [];
 
@@ -1158,19 +1158,19 @@ function buildArchetypeSteppedZiggurat() {
     }
   }
 
-  // Triple towering vertical glowing emerald Matrix data-window curtains (starting low at y = 8.6!)
+  // Triple towering vertical glowing emerald data-window curtains (starting low at y = 8.6!)
   for (const sz of [-1, 1]) {
     for (const bx of [-1.58, 0.0, 1.58]) {
-      addBox(matrix, [1.26, 10.8, 0.10], [bx, 14.2, sz * 2.45], [0, 0, 0], [0.55, 2.3]);
+      addBox(windowBoxes, [1.26, 10.8, 0.10], [bx, 14.2, sz * 2.45], [0, 0, 0], [0.55, 2.3]);
     }
     for (const bx of [-0.74, 0.74]) {
-      addBox(matrix, [1.14, 7.8, 0.10], [bx, 24.4, sz * 1.94], [0, 0, 0], [0.5, 1.7]);
+      addBox(windowBoxes, [1.14, 7.8, 0.10], [bx, 24.4, sz * 1.94], [0, 0, 0], [0.5, 1.7]);
     }
-    addBox(matrix, [1.45, 2.7, 0.10], [0, 30.2, sz * 1.34], [0, 0, 0], [0.6, 0.7]);
+    addBox(windowBoxes, [1.45, 2.7, 0.10], [0, 30.2, sz * 1.34], [0, 0, 0], [0.6, 0.7]);
   }
   for (const sx of [-1, 1]) {
-    addBox(matrix, [0.10, 13.0, 2.25], [sx * 3.70, 15.2, 0], [0, 0, 0], [0.85, 2.6]);
-    addBox(matrix, [0.10, 7.8, 2.15], [sx * 2.24, 24.4, 0], [0, 0, 0], [0.8, 1.6]);
+    addBox(windowBoxes, [0.10, 13.0, 2.25], [sx * 3.70, 15.2, 0], [0, 0, 0], [0.85, 2.6]);
+    addBox(windowBoxes, [0.10, 7.8, 2.15], [sx * 2.24, 24.4, 0], [0, 0, 0], [0.8, 1.6]);
   }
 
   // Dramatic warm amber industrial work-light rows framing lower & mid terraces
@@ -1200,7 +1200,7 @@ function buildArchetypeSteppedZiggurat() {
   return {
     steelGeo: mergeSafe(steel),
     frameGeo: mergeSafe(frame),
-    matrixGeo: mergeSafe(matrix),
+    windowGeo: mergeSafe(windowBoxes),
     amberBayGeo: mergeSafe(amberBay),
     amberLedgeGeo: mergeSafe(amberLedge),
     maxHalfX: 4.15,
@@ -1940,7 +1940,7 @@ function buildCityAbyssGroup(mats) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. Assemble Full Stage 2 Matrix Machine Cityscape
+// 7. Assemble Full Stage 2 Emerald Megacity
 // ---------------------------------------------------------------------------
 function buildCityscapeScene() {
   const root = new THREE.Group();
@@ -2161,7 +2161,7 @@ const fmtBox = (b) => ({
   max: b.max.toArray().map((n) => +n.toFixed(2)),
 });
 
-console.log('=== Robot Pong: Stage 2 Matrix Cityscape Expansion GLB Built & Verified ===');
+console.log('=== Robot Pong: Stage 2 Emerald Megacity Expansion GLB Built & Verified ===');
 console.log(`Output:               ${exportStats.outputPath}`);
 console.log(`Build time:           ${elapsedMs} ms`);
 console.log(`File size:            ${inspectReport.sizeKB} KB (${exportStats.byteLength} bytes)`);

@@ -1,12 +1,12 @@
 /**
- * Procedural 3D Model Generator: Matrix Industrial Server Cathedral Arena
+ * Procedural 3D Model Generator: Industrial Server Cathedral Arena
  * Outputs: public/models/arena_structure.glb
  *
  * Builds the massive dark dystopian cyberpunk industrial server hall surrounding
  * the Robot and table tennis table:
  *  - Towering dark weathered steel I-beam & open-lattice girders flanking left/right
  *    (x = ±3.8m, ±6.4m, z = +4.0m..-13.0m, y = 0.0m..11.5m) with wide open vertical
- *    slots so emerald Matrix digital-rain walls blaze straight through.
+ *    slots so emerald data-rain walls blaze straight through.
  *  - 3-tier industrial steel catwalks (left x = -3.7m, right x = +3.7m, deep rear
  *    z = -8.5m at y = 1.05m, 4.1m, 7.2m) with I-beam frames, diagonal under-trusses,
  *    grated steel decks, kickplates, tubular handrails, seamless corner landings,
@@ -704,7 +704,7 @@ function buildInnerColumnGeometry() {
 /**
  * Outer Cathedral Mega-Column / Open Lattice Tower (x = ±6.4m and deep rear z = -13.0m):
  * Monumental 4-chord vertical lattice girder tower (0.70m x 0.70m x 11.5m) with
- * open X-bracing diagonals on all 4 faces so Matrix green light pours through.
+ * open X-bracing diagonals on all 4 faces so green light pours through.
  */
 function buildOuterLatticeTowerGeometry() {
   const parts = [];
@@ -957,7 +957,7 @@ function buildAisleTieBeamGeometry() {
 
 /**
  * Outer Aisle Server Monolith / Cooling Fin Frame (tucked sparsely at x = ±8.35m so
- * wide open vertical slots remain for glowing Matrix digital-rain walls!).
+ * wide open vertical slots remain for glowing data-rain walls!).
  */
 function buildServerMonolithFrameGeometry() {
   const parts = [];
@@ -1249,7 +1249,7 @@ function buildHangingCablesData() {
     { a: [3.55, 6.3, -1.65], b: [3.55, 6.5, -4.50], sag: 1.62, r: 0.058, swayX: -0.28 },
     { a: [3.55, 6.4, -4.50], b: [3.55, 6.0, -7.30], sag: 1.50, r: 0.052, swayX: -0.25 },
 
-    // --- Deep Cathedral Backdrop Sweeps (z = -7.2..-11.2, framing the rear balcony & Matrix glow) ---
+    // --- Deep Cathedral Backdrop Sweeps (z = -7.2..-11.2, framing the rear balcony & emerald glow) ---
     { a: [-4.2, 7.6, -7.45], b: [4.2, 7.2, -8.35], sag: 2.35, r: 0.068, swayZ: -0.22 },
     { a: [-3.9, 6.2, -8.10], b: [3.9, 6.4, -9.20], sag: 1.95, r: 0.054, swayZ: 0.20 },
     { a: [-5.6, 8.8, -8.80], b: [5.4, 8.6, -10.60], sag: 2.85, r: 0.066, swayZ: -0.18 },

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ROBOT PONG // Matrix 3D Table Tennis</title>
+    <title>ROBOT PONG // 3D Table Tennis</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -11,8 +11,8 @@
       <!-- 3D WebGL Viewport -->
       <div id="canvas-container" aria-label="Robot Pong 3D Arena"></div>
 
-      <!-- Bullet-Time, Smash Warning & Cinematic Letterbox Overlays -->
-      <div id="fx-bullet-vignette" class="fx-overlay" aria-hidden="true"></div>
+      <!-- Slow-Mo, Smash Warning & Cinematic Letterbox Overlays -->
+      <div id="fx-slowmo-vignette" class="fx-overlay" aria-hidden="true"></div>
       <div id="fx-smash-warning" class="fx-overlay" aria-hidden="true"></div>
       <div id="fx-letterbox-top" class="fx-letterbox top" aria-hidden="true"></div>
       <div id="fx-letterbox-bottom" class="fx-letterbox bottom" aria-hidden="true"></div>
@@ -64,16 +64,6 @@
             <button id="btn-hud-mute" class="icon-btn" type="button" title="Mute / Unmute (M)">
               SFX ON
             </button>
-            <button
-              id="btn-hud-one-to-one"
-              class="icon-btn hidden"
-              type="button"
-              title="Toggle 1:1 Cursor Tracking + Auto Bullet Time on Near Misses (C)"
-              aria-pressed="true"
-              hidden
-            >
-              1:1 ON
-            </button>
             <button id="btn-hud-bloom" class="icon-btn" type="button" title="Toggle Neon Bloom">
               BLOOM ON
             </button>
@@ -90,13 +80,6 @@
 
         <div class="hud-bottom">
           <div class="hud-panel hud-meter-panel">
-            <div class="meter-header hidden" hidden>
-              <span>BULLET TIME FOCUS</span>
-              <span class="meter-key"><kbd>RMB</kbd> / <kbd>SHIFT</kbd></span>
-            </div>
-            <div class="meter-track hidden" hidden>
-              <div id="hud-focus-bar" class="meter-fill focus-fill" style="width: 100%"></div>
-            </div>
             <div class="meter-header">
               <span>SMASH CHARGE</span>
               <span class="meter-key"><kbd>HOLD LMB</kbd> / <kbd>SPACE</kbd></span>

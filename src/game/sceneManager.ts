@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ROBOT, TABLE, type StoryStage, type ThreatPhaseConfig } from './constants';
 import type { SoundEngine } from './audio';
-import { createMatrixRainWalls, GameplayVFX, SteamMistSystem } from './matrixEffects';
+import { createDataRainWalls, GameplayVFX, SteamMistSystem } from './visualEffects';
 import { getRobotSkin, type RobotSkinDefinition } from './robotSkins';
 import { RobotController } from './robotRig';
 import type { BallState, PaddleState } from './physics';
@@ -36,7 +36,7 @@ function buildCyberpunkEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
   const envScene = new THREE.Scene();
   envScene.background = new THREE.Color(0x050c09);
 
-  // Towering emerald vertical light strips (Matrix server banks)
+  // Towering emerald vertical light strips (server banks)
   const greenMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.12, 0.85, 0.38) });
   for (let i = 0; i < 12; i++) {
     const angle = (i / 12) * Math.PI * 2;
@@ -139,7 +139,7 @@ export class SceneManager {
   public ballObj: THREE.Object3D | null = null;
   public readonly vfx: GameplayVFX;
   private readonly steam: SteamMistSystem;
-  private readonly matrixRain: ReturnType<typeof createMatrixRainWalls>;
+  private readonly dataRain: ReturnType<typeof createDataRainWalls>;
   private readonly robotEyeLight: THREE.PointLight;
   private readonly gltfLoader = new GLTFLoader();
   private readonly robotSkinCache = new Map<string, THREE.Object3D>();
@@ -213,7 +213,7 @@ export class SceneManager {
       callbacks.onContextRestored?.();
     });
 
-    // Scene & moody Matrix emerald-black fog
+    // Scene & moody emerald-black fog
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x030806);
     this.scene.fog = new THREE.FogExp2(0x06140d, 0.048);
@@ -245,7 +245,7 @@ export class SceneManager {
     overheadKey.shadow.bias = -0.0006;
     this.scene.add(overheadKey);
 
-    // 2) Emerald rim backlight separating Robot carapace silhouette from the digital rain
+    // 2) Emerald rim backlight separating Robot carapace silhouette from the data rain
     const emeraldRim = new THREE.DirectionalLight(0x18e06c, 1.05);
     emeraldRim.position.set(-1.2, 6.2, -8.5);
     this.scene.add(emeraldRim);
@@ -286,8 +286,8 @@ export class SceneManager {
     this.scene.add(this.cityAmberRight);
 
     // Atmospheric VFX layers
-    this.matrixRain = createMatrixRainWalls();
-    this.scene.add(this.matrixRain.group);
+    this.dataRain = createDataRainWalls();
+    this.scene.add(this.dataRain.group);
 
     this.steam = new SteamMistSystem();
     this.scene.add(this.steam.group);
@@ -613,7 +613,7 @@ export class SceneManager {
   }
 
   /**
-   * Silently preloads Stage 2 assets (1:1 Apex Robot + Matrix Cityscape Expansion)
+   * Silently preloads Stage 2 assets (1:1 Apex Robot + Emerald Megacity Expansion)
    * in the background without exposing them in UI or altering Stage 1.
    */
   public preloadStage2Assets(): Promise<void> {
@@ -667,7 +667,7 @@ export class SceneManager {
 
   private applyExpansionVisuals(progress: number): void {
     const t = Math.max(0, Math.min(1, progress));
-    this.matrixRain.setExpansion(t);
+    this.dataRain.setExpansion(t);
 
     if (this.scene.fog instanceof THREE.FogExp2) {
       // Stage 1: exact 0.048 dense indoor haze -> Stage 2: 0.0105 deep cyberpunk skyline vista
@@ -688,7 +688,7 @@ export class SceneManager {
 
   /**
    * Snaps environment and active boss cleanly to Stage 1 (exact classic look)
-   * or Stage 2 (1:1 Apex Robot + expanded Matrix Machine Cityscape).
+   * or Stage 2 (1:1 Apex Robot + expanded Emerald Megacity).
    */
   public async setEnvironmentStage(stage: StoryStage): Promise<void> {
     this.cutsceneActive = false;
@@ -798,7 +798,7 @@ export class SceneManager {
     this.cameraClock += realDt;
     this.shakeMagnitude = Math.max(0, this.shakeMagnitude - realDt * 0.45);
     this.steam.update(this.cameraClock);
-    this.matrixRain.update(realDt * 1.45, 1.25);
+    this.dataRain.update(realDt * 1.45, 1.25);
 
     const smoothstep = (x: number) => {
       const c = Math.max(0, Math.min(1, x));
@@ -931,7 +931,7 @@ export class SceneManager {
       this.robotController.update(realDt, ball, stage2Phase, false);
     }
 
-    // Phase C (2.70s - 5.15s): Matrix rain horizon pushes far outward & 3D Machine Cityscape expands!
+    // Phase C (2.70s - 5.15s): Data rain horizon pushes far outward & 3D Emerald Megacity expands!
     if (!this.cutsceneExpandFired && elapsed >= 2.7) {
       this.cutsceneExpandFired = true;
       audio.playCityExpand();
@@ -957,7 +957,7 @@ export class SceneManager {
       );
       this.cutsceneCamLook.set(0, 1.1 + 0.72 * tA, -1.9);
     } else if (elapsed < 4.95) {
-      // Wide grand panorama showcasing the expanding 3D Matrix Cityscape behind the untouched table
+      // Wide grand panorama showcasing the expanding 3D Emerald Megacity behind the untouched table
       const tB = smoothstep((elapsed - 2.7) / 1.6);
       this.cutsceneCamPos.set(
         0.24 * (1 - tB) + shakeX,
@@ -1006,7 +1006,7 @@ export class SceneManager {
 
   public syncPlayerPaddle(
     paddle: PaddleState,
-    bulletTime: boolean,
+    slowMo: boolean,
     ghost?: {
       anchor: { x: number; y: number; z: number };
       active: boolean;
@@ -1023,8 +1023,8 @@ export class SceneManager {
     const tiltY = Math.PI + paddle.pos.x * 0.24;
     this.playerPaddleObj.rotation.set(tiltX, tiltY, tiltZ);
 
-    // Subtle scale pop when charging power smash or in Bullet Time
-    const s = 1.12 + paddle.smashCharge * 0.1 + (bulletTime ? 0.04 : 0);
+    // Subtle scale pop when charging power smash or in Slow-Mo
+    const s = 1.12 + paddle.smashCharge * 0.1 + (slowMo ? 0.04 : 0);
     this.playerPaddleObj.scale.setScalar(s);
 
     // Subtle muted VR ghost silhouette + faint tether (only on off-screen or sustained edge-jumps)
@@ -1078,7 +1078,7 @@ export class SceneManager {
     playerPaddle: PaddleState,
     opts: {
       isMenu: boolean;
-      bulletTime: boolean;
+      slowMo: boolean;
       phaseNumber: number;
     }
   ): void {
@@ -1087,12 +1087,12 @@ export class SceneManager {
     this.cameraClock += realDt;
     this.shakeMagnitude = Math.max(0, this.shakeMagnitude - realDt * 0.55);
 
-    // Matrix rain slows down dramatically in Bullet Time and intensifies at higher Threat Phases!
-    const rainDt = opts.bulletTime ? dt * 0.35 : realDt * (1 + (opts.phaseNumber - 1) * 0.18);
+    // Data rain slows down dramatically in Slow-Mo and intensifies at higher Threat Phases!
+    const rainDt = opts.slowMo ? dt * 0.35 : realDt * (1 + (opts.phaseNumber - 1) * 0.18);
     const baseRainIntensity = this.currentStage === 2 ? 1.18 : 1.05;
-    this.matrixRain.update(
+    this.dataRain.update(
       rainDt,
-      opts.bulletTime ? 1.38 : baseRainIntensity + (opts.phaseNumber - 1) * 0.08
+      opts.slowMo ? 1.38 : baseRainIntensity + (opts.phaseNumber - 1) * 0.08
     );
     this.steam.update(this.cameraClock);
 
@@ -1129,8 +1129,8 @@ export class SceneManager {
     } else {
       const clampedPadX = Math.max(-1.45, Math.min(1.45, playerPaddle.pos.x));
       const targetCamX = clampedPadX * 0.22 + shakeX;
-      const targetCamY = (opts.bulletTime ? 1.54 : 1.66) + shakeY;
-      const targetCamZ = opts.bulletTime ? 2.38 : 2.56;
+      const targetCamY = (opts.slowMo ? 1.54 : 1.66) + shakeY;
+      const targetCamZ = opts.slowMo ? 2.38 : 2.56;
       this.camera.position.x += (targetCamX - this.camera.position.x) * Math.min(1, realDt * 6.5);
       this.camera.position.y += (targetCamY - this.camera.position.y) * Math.min(1, realDt * 6.5);
       this.camera.position.z += (targetCamZ - this.camera.position.z) * Math.min(1, realDt * 6.5);
@@ -1138,7 +1138,7 @@ export class SceneManager {
     }
 
     if (this.bloomPass) {
-      this.bloomPass.strength = opts.bulletTime ? 0.56 : 0.36;
+      this.bloomPass.strength = opts.slowMo ? 0.56 : 0.36;
     }
 
     if (this.bloomEnabled && this.composer) {

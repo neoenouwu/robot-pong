@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 export const VALID_MODES = new Set(['arcade', 'duel']);
+const VALID_DIFFICULTIES = new Set(['overdrive', 'easy', 'medium', 'hard']);
 export const MAX_ENTRIES_PER_MODE = 100;
 
 export const SEED_DATA = {
@@ -74,13 +75,16 @@ export function validateEntryPayload(body) {
     return { ok: false, error: 'Invalid perfectHits value.' };
   }
 
-  const allowedDiff = new Set(['overdrive', 'easy', 'medium', 'hard', 'scout', 'hunter', 'architect']);
-  const difficulty =
-    typeof body.difficulty === 'string' && allowedDiff.has(body.difficulty.toLowerCase())
-      ? body.difficulty.toLowerCase()
-      : mode === 'arcade'
-        ? 'overdrive'
-        : 'medium';
+  // An omitted difficulty falls back to the mode default. Anything that IS sent must be
+  // one of the current values — unrecognised values are rejected, never silently remapped.
+  let difficulty = mode === 'arcade' ? 'overdrive' : 'medium';
+  if (body.difficulty !== undefined && body.difficulty !== null) {
+    const requested = typeof body.difficulty === 'string' ? body.difficulty.toLowerCase() : '';
+    if (!VALID_DIFFICULTIES.has(requested)) {
+      return { ok: false, error: 'Difficulty must be "overdrive", "easy", "medium" or "hard".' };
+    }
+    difficulty = requested;
+  }
 
   let matchScore = undefined;
   if (typeof body.matchScore === 'string') {

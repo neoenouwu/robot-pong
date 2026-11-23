@@ -1,7 +1,7 @@
 /**
  * Procedural Hero 3D Boss Model Builder — Robot (`public/models/robot.glb`)
  *
- * Constructs a high-detail, Matrix-inspired armored octopus-robot:
+ * Constructs a high-detail armored octopus-robot:
  * - Sculpted multi-plate overlapping gunmetal carapace (~2.0m W x 0.95m H x 1.75m D)
  *   with bolted dorsal ribs, spine crest, hydraulic vents, shoulder sockets,
  *   mechanical reactor underbelly, and hanging metallic cable tendrils.

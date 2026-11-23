@@ -15,7 +15,7 @@ import {
   clamp,
   computeEdgeJumpTargetX,
   createBallState,
-  evaluateAutoBulletTime,
+  evaluateAutoSlowMo,
   solveBallisticShot,
   stepPhysics,
   type BallState,
@@ -78,8 +78,7 @@ export interface HudSnapshot {
   playerPoints: number;
   robotPoints: number;
   server: Side;
-  focus: number; // 0..100
-  bulletTimeActive: boolean;
+  slowMoActive: boolean;
   smashCharge: number; // 0..1
   threatPhase: ThreatPhaseConfig;
   maxPhaseReached: number;
@@ -151,10 +150,9 @@ export class GameEngine {
   private robotPoints = 0;
   private totalDuelPoints = 0;
   private server: Side = 'player';
-  private focus = 100; // Unlimited Bullet Time Focus
-  private bulletTimeRequested = false;
-  private autoBulletTimeLatched = false;
-  private bulletTimeActive = false;
+  private slowMoRequested = false;
+  private autoSlowMoLatched = false;
+  private slowMoActive = false;
   private maxPhaseReached = 1;
   private winner: Side | null = null;
   private lastPointReason = '';
@@ -265,10 +263,9 @@ export class GameEngine {
     this.robotPoints = 0;
     this.totalDuelPoints = 0;
     this.server = 'player';
-    this.focus = 100;
-    this.bulletTimeActive = false;
-    this.bulletTimeRequested = false;
-    this.autoBulletTimeLatched = false;
+    this.slowMoActive = false;
+    this.slowMoRequested = false;
+    this.autoSlowMoLatched = false;
     this.ghostJumpLatched = false;
     this.ghostDesyncTimer = 0;
     this.ghostCursorPaddle.prevPos = { ...this.playerPaddle.pos };
@@ -300,8 +297,8 @@ export class GameEngine {
     ) {
       this.prePauseState = this.state;
       this.state = 'PAUSED';
-      this.autoBulletTimeLatched = false;
-      this.setBulletTime(false);
+      this.autoSlowMoLatched = false;
+      this.setSlowMo(false);
       this.pushHud(true);
     }
   }
@@ -322,8 +319,8 @@ export class GameEngine {
   }
 
   public returnToMenu(): void {
-    this.setBulletTime(false);
-    this.autoBulletTimeLatched = false;
+    this.setSlowMo(false);
+    this.autoSlowMoLatched = false;
     this.cutsceneReady = false;
     this.cutsceneFinishing = false;
     this.storyStage = 1;
@@ -346,7 +343,7 @@ export class GameEngine {
   public setOneToOneMode(enabled: boolean): void {
     this.oneToOneMode = enabled;
     if (!enabled) {
-      this.autoBulletTimeLatched = false;
+      this.autoSlowMoLatched = false;
     }
     this.pushHud(true);
   }
@@ -386,8 +383,8 @@ export class GameEngine {
     this.cutsceneReady = false;
     this.cutsceneFinishing = false;
     this.ball.active = false;
-    this.autoBulletTimeLatched = false;
-    this.setBulletTime(false);
+    this.autoSlowMoLatched = false;
+    this.setSlowMo(false);
     this.sceneManager.vfx.clearTrail();
     this.sceneManager.vfx.clearFloatingPoints();
     this.pushHud(true);
@@ -514,10 +511,10 @@ export class GameEngine {
     this.pushHud(true);
   }
 
-  private setBulletTime(active: boolean): void {
-    if (this.bulletTimeActive === active) return;
-    this.bulletTimeActive = active;
-    this.audio.setBulletTimeAudio(active);
+  private setSlowMo(active: boolean): void {
+    if (this.slowMoActive === active) return;
+    this.slowMoActive = active;
+    this.audio.setSlowMoAudio(active);
   }
 
   private step(realDt: number, nowMs: number): void {
@@ -542,35 +539,34 @@ export class GameEngine {
         // Still finishing silent preload — keep rendering smoothly
         this.sceneManager.updateVisuals(0, realDt, this.ball, this.playerPaddle, {
           isMenu: false,
-          bulletTime: false,
+          slowMo: false,
           phaseNumber: phase.phase,
         });
       }
       return;
     }
 
-    // Unlimited Bullet Time management (manual RMB/Shift OR automatic near-miss reflex in 1:1 mode)
+    // Unlimited Slow-Mo management (manual RMB/Shift OR automatic near-miss reflex in 1:1 mode)
     if (this.state === 'RALLY') {
-      const autoCheck = evaluateAutoBulletTime({
+      const autoCheck = evaluateAutoSlowMo({
         oneToOneMode: this.oneToOneMode,
         ball: this.ball,
         playerPaddle: this.playerPaddle,
-        alreadyLatched: this.autoBulletTimeLatched,
+        alreadyLatched: this.autoSlowMoLatched,
       });
-      this.autoBulletTimeLatched = autoCheck.active;
+      this.autoSlowMoLatched = autoCheck.active;
     } else {
-      this.autoBulletTimeLatched = false;
+      this.autoSlowMoLatched = false;
     }
 
-    const wantsBulletTime = this.bulletTimeRequested || this.autoBulletTimeLatched;
-    this.focus = 100;
-    if (this.state === 'RALLY' && wantsBulletTime) {
-      this.setBulletTime(true);
+    const wantsSlowMo = this.slowMoRequested || this.autoSlowMoLatched;
+    if (this.state === 'RALLY' && wantsSlowMo) {
+      this.setSlowMo(true);
     } else {
-      this.setBulletTime(false);
+      this.setSlowMo(false);
     }
 
-    const simDt = this.state === 'PAUSED' ? 0 : this.bulletTimeActive ? realDt * 0.36 : realDt;
+    const simDt = this.state === 'PAUSED' ? 0 : this.slowMoActive ? realDt * 0.36 : realDt;
 
     // Update Player Paddle from mouse/touch/keyboard even during SERVE & RALLY
     if (this.state !== 'PAUSED') {
@@ -722,7 +718,7 @@ export class GameEngine {
     }
 
     // Sync 3D meshes and render frame
-    this.sceneManager.syncPlayerPaddle(this.playerPaddle, this.bulletTimeActive, {
+    this.sceneManager.syncPlayerPaddle(this.playerPaddle, this.slowMoActive, {
       anchor: this.cursorAnchorPos,
       active: this.ghostJumpLatched,
       desyncDuration: this.ghostDesyncTimer,
@@ -731,7 +727,7 @@ export class GameEngine {
     this.sceneManager.syncBall(this.ball, simDt);
     this.sceneManager.updateVisuals(simDt, realDt, this.ball, this.playerPaddle, {
       isMenu: this.state === 'MENU',
-      bulletTime: this.bulletTimeActive,
+      slowMo: this.slowMoActive,
       phaseNumber: phase.phase,
     });
 
@@ -743,8 +739,8 @@ export class GameEngine {
   }
 
   private handlePointEnd(winner: Side, reason: string): void {
-    this.autoBulletTimeLatched = false;
-    this.setBulletTime(false);
+    this.autoSlowMoLatched = false;
+    this.setSlowMo(false);
     this.audio.playPointResult(winner === 'player');
 
     const reasonLabels: Record<string, string> = {
@@ -1006,8 +1002,8 @@ export class GameEngine {
   private handlePointerDown(e: PointerEvent): void {
     this.audio.unlock();
     if (e.button === 2) {
-      // Right-click triggers Bullet Time Focus
-      this.bulletTimeRequested = true;
+      // Right-click triggers Slow-Mo
+      this.slowMoRequested = true;
       return;
     }
     if (e.button === 0) {
@@ -1023,7 +1019,7 @@ export class GameEngine {
 
   private handlePointerUp(e: PointerEvent): void {
     if (e.button === 2) {
-      this.bulletTimeRequested = false;
+      this.slowMoRequested = false;
     }
     if (e.button === 0 && this.isChargingSmash) {
       this.isChargingSmash = false;
@@ -1048,7 +1044,7 @@ export class GameEngine {
         this.isChargingSmash = true;
       }
     } else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
-      this.bulletTimeRequested = true;
+      this.slowMoRequested = true;
     } else if (e.code === 'Escape' || e.code === 'KeyP') {
       if (this.state === 'PAUSED') {
         this.resumeGame();
@@ -1072,7 +1068,7 @@ export class GameEngine {
       this.isChargingSmash = false;
       this.lungeTimer = 1.0;
     } else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
-      this.bulletTimeRequested = false;
+      this.slowMoRequested = false;
     }
   }
 
@@ -1100,8 +1096,7 @@ export class GameEngine {
       playerPoints: this.playerPoints,
       robotPoints: this.robotPoints,
       server: this.server,
-      focus: Math.round(this.focus),
-      bulletTimeActive: this.bulletTimeActive,
+      slowMoActive: this.slowMoActive,
       smashCharge: this.playerPaddle.smashCharge,
       threatPhase: phase,
       maxPhaseReached: this.maxPhaseReached,
