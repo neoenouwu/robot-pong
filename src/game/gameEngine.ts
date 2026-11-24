@@ -26,6 +26,13 @@ import {
   type Side,
 } from './physics';
 import { SceneManager } from './sceneManager';
+import {
+  applyTouchReach,
+  mapTouchToNdc,
+  touchReachGain,
+  touchSteerOffsetPx,
+  TouchTracker,
+} from './touchInput';
 
 export type GamePhaseState =
   | 'LOADING'
@@ -146,6 +153,12 @@ export class GameEngine {
   private lungeTimer = 0;
   private keys = new Set<string>();
   private sensitivity = 1.0;
+  // Touch-only input state (never set by mouse, pen or keyboard)
+  private readonly touchTracker = new TouchTracker();
+  private uiSmashHeld = false;
+  private uiSlowMoHeld = false;
+  /** Last steering input was a finger (set only by touch; any mouse move clears it). */
+  private touchSteering = false;
 
   // Progression & score state
   private score = 0;
@@ -178,6 +191,11 @@ export class GameEngine {
   private readonly onPointerMoveBound: (e: PointerEvent) => void;
   private readonly onPointerDownBound: (e: PointerEvent) => void;
   private readonly onPointerUpBound: (e: PointerEvent) => void;
+  private readonly onPointerCancelBound: (e: PointerEvent) => void;
+  private readonly onWindowBlurBound: () => void;
+  private readonly onCanvasTouchBound = (e: TouchEvent): void => {
+    if (e.cancelable) e.preventDefault();
+  };
   private readonly onContextMenuBound: (e: MouseEvent) => void;
   private readonly onKeyDownBound: (e: KeyboardEvent) => void;
   private readonly onKeyUpBound: (e: KeyboardEvent) => void;
@@ -196,14 +214,22 @@ export class GameEngine {
     this.onPointerMoveBound = (e) => this.handlePointerMove(e);
     this.onPointerDownBound = (e) => this.handlePointerDown(e);
     this.onPointerUpBound = (e) => this.handlePointerUp(e);
+    this.onPointerCancelBound = (e) => {
+      if (e.pointerType === 'touch') this.handleTouchEnd(e, true);
+    };
+    this.onWindowBlurBound = () => this.releaseTouchHolds();
     this.onContextMenuBound = (e) => {
-      if (this.state === 'RALLY' || this.state === 'SERVE') {
+      // Long-press on a touch screen must not open a menu over the play area
+      if (this.state === 'RALLY' || this.state === 'SERVE' || this.touchTracker.size > 0) {
         e.preventDefault();
       }
     };
     this.onKeyDownBound = (e) => this.handleKeyDown(e);
     this.onKeyUpBound = (e) => this.handleKeyUp(e);
     this.onVisibilityBound = () => {
+      if (document.hidden) {
+        this.releaseTouchHolds();
+      }
       if (
         document.hidden &&
         (this.state === 'RALLY' || this.state === 'SERVE' || this.state === 'CUTSCENE')
@@ -213,9 +239,23 @@ export class GameEngine {
     };
 
     const canvas = this.sceneManager.renderer.domElement;
+    if (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) {
+      // Touch screens only: keep the browser from scrolling, zooming or pulling to refresh while
+      // a finger steers, and from drawing tap highlights or long-press callouts on the play area.
+      // These properties do not affect mouse input.
+      canvas.style.touchAction = 'none';
+      canvas.style.setProperty('-webkit-touch-callout', 'none');
+      canvas.style.setProperty('-webkit-tap-highlight-color', 'transparent');
+      // Belt and braces for browsers that do not fully honour touch-action (older iOS Safari):
+      // touches that start on the play area never scroll, zoom or open a callout.
+      canvas.addEventListener('touchstart', this.onCanvasTouchBound, { passive: false });
+      canvas.addEventListener('touchmove', this.onCanvasTouchBound, { passive: false });
+    }
     window.addEventListener('pointermove', this.onPointerMoveBound);
     canvas.addEventListener('pointerdown', this.onPointerDownBound);
     window.addEventListener('pointerup', this.onPointerUpBound);
+    window.addEventListener('pointercancel', this.onPointerCancelBound);
+    window.addEventListener('blur', this.onWindowBlurBound);
     canvas.addEventListener('contextmenu', this.onContextMenuBound);
     window.addEventListener('keydown', this.onKeyDownBound);
     window.addEventListener('keyup', this.onKeyUpBound);
@@ -252,6 +292,7 @@ export class GameEngine {
     startStage: StoryStage = 1
   ): void {
     this.audio.unlock();
+    this.releaseTouchHolds();
     this.mode = mode;
     this.difficulty = difficulty;
     const effectiveStage: StoryStage =
@@ -305,6 +346,7 @@ export class GameEngine {
     ) {
       this.prePauseState = this.state;
       this.state = 'PAUSED';
+      this.releaseTouchHolds();
       this.autoSlowMoLatched = false;
       this.setSlowMo(false);
       this.pushHud(true);
@@ -327,6 +369,7 @@ export class GameEngine {
   }
 
   public returnToMenu(): void {
+    this.releaseTouchHolds();
     this.setSlowMo(false);
     this.autoSlowMoLatched = false;
     this.cutsceneReady = false;
@@ -567,7 +610,7 @@ export class GameEngine {
       this.autoSlowMoLatched = false;
     }
 
-    const wantsSlowMo = this.slowMoRequested || this.autoSlowMoLatched;
+    const wantsSlowMo = this.slowMoRequested || this.uiSlowMoHeld || this.autoSlowMoLatched;
     if (this.state === 'RALLY' && wantsSlowMo) {
       this.setSlowMo(true);
     } else {
@@ -867,7 +910,7 @@ export class GameEngine {
     this.rawNdcY = clamp(this.rawNdcY, -1.0, 1.0);
 
     // Charge power smash while holding Left Mouse or Space
-    if (this.isChargingSmash) {
+    if (this.isChargingSmash || this.isTouchChargeHeld()) {
       this.playerPaddle.smashCharge = clamp(this.playerPaddle.smashCharge + dt * 1.9, 0, 1);
     } else {
       this.playerPaddle.smashCharge = Math.max(0, this.playerPaddle.smashCharge - dt * 4.5);
@@ -898,7 +941,11 @@ export class GameEngine {
         targetZ
       );
       if (projected) {
-        targetX = clamp(projected.x, -1.35, 1.35);
+        targetX = clamp(
+          this.touchSteering ? this.extendTouchReachX(projected.x, targetZ) : projected.x,
+          -1.35,
+          1.35
+        );
         targetY = clamp(projected.y, PLAYER_PADDLE.MIN_Y, 1.98);
       } else {
         targetX = clamp(this.rawNdcX * 1.25, -1.35, 1.35);
@@ -1005,6 +1052,11 @@ export class GameEngine {
   }
 
   private handlePointerMove(e: PointerEvent): void {
+    if (e.pointerType === 'touch') {
+      this.handleTouchMove(e);
+      return;
+    }
+    this.touchSteering = false;
     const rect = this.sceneManager.renderer.domElement.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1016,6 +1068,10 @@ export class GameEngine {
   }
 
   private handlePointerDown(e: PointerEvent): void {
+    if (e.pointerType === 'touch') {
+      this.handleTouchDown(e);
+      return;
+    }
     this.audio.unlock();
     if (e.button === 2) {
       // Right-click triggers Slow-Mo
@@ -1034,12 +1090,151 @@ export class GameEngine {
   }
 
   private handlePointerUp(e: PointerEvent): void {
+    if (e.pointerType === 'touch') {
+      this.handleTouchEnd(e, false);
+      return;
+    }
     if (e.button === 2) {
       this.slowMoRequested = false;
     }
     if (e.button === 0 && this.isChargingSmash) {
       this.isChargingSmash = false;
       this.lungeTimer = 1.0;
+    }
+  }
+
+  // ---- Touch input (pointerType === 'touch' only) ----
+
+  private handleTouchDown(e: PointerEvent): void {
+    this.audio.unlock();
+    const touch = this.touchTracker.down(
+      e.pointerId,
+      e.clientX,
+      e.clientY,
+      e.timeStamp,
+      e.isPrimary,
+      {
+        rally: this.state === 'RALLY',
+        playerServe: this.state === 'SERVE' && this.server === 'player',
+      }
+    );
+    if (touch.role === 'steer') {
+      // Keep receiving this finger's moves even if it slides over other elements
+      try {
+        this.sceneManager.renderer.domElement.setPointerCapture(e.pointerId);
+      } catch {
+        // Pointer already gone; nothing to capture
+      }
+      if (!touch.steerDeferred) {
+        this.steerToTouch(e.clientX, e.clientY);
+      }
+    }
+  }
+
+  private handleTouchMove(e: PointerEvent): void {
+    if (this.touchTracker.move(e.pointerId, e.clientX, e.clientY)) {
+      this.steerToTouch(e.clientX, e.clientY);
+    }
+  }
+
+  private handleTouchEnd(e: PointerEvent, cancelled: boolean): void {
+    const res = this.touchTracker.up(e.pointerId, e.timeStamp, cancelled);
+    if (!res) return;
+    if (res.releaseSmash) {
+      this.lungeTimer = 1.0;
+    }
+    if (res.tap) {
+      if (this.state === 'CUTSCENE') {
+        this.skipCutscene();
+      } else if (this.state === 'SERVE' && this.server === 'player') {
+        this.triggerPlayerServe();
+      }
+    }
+  }
+
+  /** Aims the paddle a little above the finger (see mapTouchToNdc). */
+  private steerToTouch(clientX: number, clientY: number): void {
+    const rect = this.sceneManager.renderer.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const { ndcX, ndcY } = mapTouchToNdc(
+      clientX - rect.left,
+      clientY - rect.top,
+      rect.width,
+      rect.height,
+      touchSteerOffsetPx(rect.height)
+    );
+    // Same mapping a mouse pointer at this aim point would produce
+    this.rawNdcX = ndcX;
+    this.rawNdcY = ndcY;
+    this.pointerNormX = clamp(ndcX * 1.12, -1.15, 1.15);
+    this.pointerNormY = ndcY;
+    this.touchSteering = true;
+  }
+
+  /**
+   * Touch, 1:1 mode: on a narrow screen the visible strike plane is narrower than the paddle's
+   * reach, so the finger's sideways movement is scaled up until the screen edges reach the same
+   * distance a wide screen gives.
+   */
+  private extendTouchReachX(projectedX: number, planeZ: number): number {
+    const sm = this.sceneManager;
+    const center = sm.projectPointerToStrikePlane(0, this.rawNdcY, planeZ);
+    const left = sm.projectPointerToStrikePlane(-1, this.rawNdcY, planeZ);
+    const right = sm.projectPointerToStrikePlane(1, this.rawNdcY, planeZ);
+    if (!center || !left || !right) return projectedX;
+    const gain = touchReachGain((right.x - left.x) / 2);
+    return applyTouchReach(projectedX, center.x, gain);
+  }
+
+  /** Lets go of every touch and on-screen hold (charge, slow-mo) without a swing. */
+  private releaseTouchHolds(): void {
+    this.touchTracker.clear();
+    this.uiSmashHeld = false;
+    this.uiSlowMoHeld = false;
+  }
+
+  /** True while a touch finger or an on-screen control is holding a smash charge. */
+  public isTouchChargeHeld(): boolean {
+    return this.uiSmashHeld || this.touchTracker.isCharging();
+  }
+
+  /**
+   * On-screen action control pressed (same meaning as pressing Space): serves on the player's
+   * serve, otherwise starts holding a smash charge during a rally.
+   */
+  public startSmashCharge(): void {
+    this.audio.unlock();
+    if (this.state === 'CUTSCENE') {
+      this.skipCutscene();
+    } else if (this.state === 'SERVE' && this.server === 'player') {
+      this.triggerPlayerServe();
+    } else if (this.state === 'RALLY') {
+      this.uiSmashHeld = true;
+    }
+  }
+
+  /** On-screen action control released: swings if a charge was being held. */
+  public releaseSmashCharge(): void {
+    if (!this.uiSmashHeld) return;
+    this.uiSmashHeld = false;
+    this.lungeTimer = 1.0;
+  }
+
+  /** On-screen action control lost (pointer cancelled): drops the charge without a swing. */
+  public cancelSmashCharge(): void {
+    this.uiSmashHeld = false;
+  }
+
+  /** On-screen slow-mo control: slow-mo is requested while held (rallies only, like Shift). */
+  public setSlowMoHeld(held: boolean): void {
+    if (held) this.audio.unlock();
+    this.uiSlowMoHeld = held;
+  }
+
+  /** Skips the Stage 2 cutscene when skipping is allowed (same as Space). */
+  public skipCutscene(): void {
+    if (this.state === 'CUTSCENE' && this.canSkipCutscene && this.cutsceneReady) {
+      this.completeStage2Cutscene();
     }
   }
 
@@ -1131,6 +1326,10 @@ export class GameEngine {
     window.removeEventListener('pointermove', this.onPointerMoveBound);
     canvas.removeEventListener('pointerdown', this.onPointerDownBound);
     window.removeEventListener('pointerup', this.onPointerUpBound);
+    window.removeEventListener('pointercancel', this.onPointerCancelBound);
+    window.removeEventListener('blur', this.onWindowBlurBound);
+    canvas.removeEventListener('touchstart', this.onCanvasTouchBound);
+    canvas.removeEventListener('touchmove', this.onCanvasTouchBound);
     canvas.removeEventListener('contextmenu', this.onContextMenuBound);
     window.removeEventListener('keydown', this.onKeyDownBound);
     window.removeEventListener('keyup', this.onKeyUpBound);

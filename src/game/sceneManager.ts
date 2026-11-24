@@ -11,6 +11,11 @@ import { createDataRainWalls, GameplayVFX, SteamMistSystem } from './visualEffec
 import { getRobotSkin, type RobotSkinDefinition } from './robotSkins';
 import { RobotController } from './robotRig';
 import type { BallState, PaddleState } from './physics';
+import {
+  isTouchPrimaryDevice,
+  touchPortraitCameraPullback,
+  touchPortraitFov,
+} from './touchInput';
 
 export interface LoadedModels {
   robot: THREE.Object3D;
@@ -176,6 +181,8 @@ export class SceneManager {
   private readonly rayNdcScratch = new THREE.Vector3();
   private readonly rayDirScratch = new THREE.Vector3();
   private readonly boundResize: () => void;
+  /** Extra gameplay camera distance on touch screens held upright (0 everywhere else). */
+  private touchCameraPullback = 0;
 
   constructor(container: HTMLElement, callbacks: SceneCallbacks = {}) {
     this.container = container;
@@ -305,9 +312,18 @@ export class SceneManager {
 
   private computeAdaptiveFov(aspect: number): number {
     // Widen FOV slightly on narrow/portrait screens so the entire table width stays visible
-    if (aspect < 1.1) return 68;
-    if (aspect < 1.45) return 58;
-    return 50;
+    let fov = 50;
+    if (aspect < 1.1) fov = 68;
+    else if (aspect < 1.45) fov = 58;
+    // Touch-primary devices held in portrait: widen further so the table's width fits on screen
+    // (also decides the matching camera pull-back; unchanged unless the primary pointer is a finger)
+    if (isTouchPrimaryDevice()) {
+      fov = touchPortraitFov(aspect, fov);
+      this.touchCameraPullback = touchPortraitCameraPullback(aspect);
+    } else {
+      this.touchCameraPullback = 0;
+    }
+    return fov;
   }
 
   private initPostProcessing(): void {
@@ -1131,7 +1147,7 @@ export class SceneManager {
       const clampedPadX = Math.max(-1.45, Math.min(1.45, playerPaddle.pos.x));
       const targetCamX = clampedPadX * 0.22 + shakeX;
       const targetCamY = (opts.slowMo ? 1.54 : 1.66) + shakeY;
-      const targetCamZ = opts.slowMo ? 2.38 : 2.56;
+      const targetCamZ = (opts.slowMo ? 2.38 : 2.56) + this.touchCameraPullback;
       this.camera.position.x += (targetCamX - this.camera.position.x) * Math.min(1, realDt * 6.5);
       this.camera.position.y += (targetCamY - this.camera.position.y) * Math.min(1, realDt * 6.5);
       this.camera.position.z += (targetCamZ - this.camera.position.z) * Math.min(1, realDt * 6.5);
