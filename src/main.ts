@@ -6,6 +6,7 @@ import {
 } from './game/constants';
 import { GameEngine, type HudSnapshot } from './game/gameEngine';
 import { computeStoryHealthBars, type HealthBarSide } from './game/healthBars';
+import { HUD_STYLE_STORAGE_KEY, parseHudStyle, type HudStyle } from './game/hudStyle';
 import { getRobotSkin } from './game/robotSkins';
 import { SceneManager } from './game/sceneManager';
 import {
@@ -43,7 +44,6 @@ class RobotPongApp {
 
   private selectedMode: GameMode = 'duel';
   private selectedDifficulty: Difficulty = 'easy';
-  private selectedStoryStage: StoryStage = 1;
   private stage2Unlocked = false;
   private bloomOn = true;
   private lastSnapshot: HudSnapshot | null = null;
@@ -55,6 +55,7 @@ class RobotPongApp {
   private lastShields = 3;
   private lastStoryPoints: { player: number; robot: number } | null = null;
   private lastHealthKey = '';
+  private hudStyle: HudStyle = 'classic';
 
   // DOM refs
   private readonly canvasContainer = byId<HTMLDivElement>('canvas-container');
@@ -82,18 +83,27 @@ class RobotPongApp {
   private readonly hudBestRally = byId<HTMLElement>('hud-best-rally');
   private readonly hudPhaseBadge = byId<HTMLDivElement>('hud-phase-badge');
   private readonly hudArcadeShields = byId<HTMLDivElement>('hud-arcade-shields');
+  private readonly hudDuelScore = byId<HTMLDivElement>('hud-duel-score');
+  private readonly hudPPts = byId<HTMLElement>('hud-p-pts');
+  private readonly hudRPts = byId<HTMLElement>('hud-r-pts');
   private readonly hudHealthPlayer = byId<HTMLDivElement>('hud-health-player');
   private readonly hudHealthRobot = byId<HTMLDivElement>('hud-health-robot');
   private readonly hudSmashBar = byId<HTMLDivElement>('hud-smash-bar');
   private readonly hudServePrompt = byId<HTMLDivElement>('hud-serve-prompt');
-  private readonly hudHealth = byId<HTMLDivElement>('hud-health');
+  private readonly btnHudMute = byId<HTMLButtonElement>('btn-hud-mute');
+  private readonly btnHudBloom = byId<HTMLButtonElement>('btn-hud-bloom');
+  private readonly btnHudPauseIcon = byId<HTMLButtonElement>('btn-hud-pause-icon');
   private readonly btnToggleSfx = byId<HTMLButtonElement>('btn-toggle-sfx');
   private readonly btnToggleBloom = byId<HTMLButtonElement>('btn-toggle-bloom');
+  private readonly screenSettings = byId<HTMLDivElement>('screen-settings');
+  private readonly btnOpenSettings = byId<HTMLButtonElement>('btn-open-settings');
+  private readonly btnSettingBars = byId<HTMLButtonElement>('btn-setting-bars');
+  private readonly btnSettingSfx = byId<HTMLButtonElement>('btn-setting-sfx');
+  private readonly btnSettingBloom = byId<HTMLButtonElement>('btn-setting-bloom');
   private lastMuted: boolean | null = null;
   private focusResumeOnPause = false;
 
   private readonly duelDiffWrap = byId<HTMLDivElement>('duel-diff-wrap');
-  private readonly storyStageWrap = byId<HTMLDivElement>('story-stage-wrap');
   private readonly btnRetryStage2 = byId<HTMLButtonElement>('btn-retry-stage2');
   private readonly menuLbList = byId<HTMLDivElement>('menu-lb-list');
   private readonly previewSourceBadge = byId<HTMLSpanElement>('preview-source-badge');
@@ -117,7 +127,12 @@ class RobotPongApp {
     } catch {
       this.stage2Unlocked = false;
     }
-    this.syncStageUnlockVisibility();
+    try {
+      this.hudStyle = parseHudStyle(window.localStorage.getItem(HUD_STYLE_STORAGE_KEY));
+    } catch {
+      this.hudStyle = 'classic';
+    }
+    this.setToggleState(this.btnSettingBars, this.hudStyle === 'bars');
     this.buildHealthSegments(this.hudHealthPlayer);
     this.buildHealthSegments(this.hudHealthRobot);
     this.bindUiEvents();
@@ -126,17 +141,6 @@ class RobotPongApp {
       this.inputCallsign.value = savedName;
     }
     void this.initArena();
-  }
-
-  private syncStageUnlockVisibility(): void {
-    const showStagePicker = this.selectedMode === 'duel' && this.stage2Unlocked;
-    this.storyStageWrap.classList.toggle('hidden', !showStagePicker);
-    if (!this.stage2Unlocked) {
-      this.selectedStoryStage = 1;
-    }
-    document.querySelectorAll<HTMLButtonElement>('.stage-btn').forEach((btn) => {
-      btn.classList.toggle('active', Number(btn.dataset.stage) === this.selectedStoryStage);
-    });
   }
 
   private bindUiEvents(): void {
@@ -154,7 +158,6 @@ class RobotPongApp {
         document.querySelectorAll('.mode-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
         this.duelDiffWrap.classList.toggle('hidden', mode !== 'duel');
-        this.syncStageUnlockVisibility();
         void this.refreshMenuLeaderboard(mode);
       });
     });
@@ -168,42 +171,64 @@ class RobotPongApp {
       });
     });
 
-    // Unlocked Story Stage selector buttons
-    document.querySelectorAll<HTMLButtonElement>('.stage-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (!this.stage2Unlocked) return;
-        const stg = Number(btn.dataset.stage) === 2 ? 2 : 1;
-        this.selectedStoryStage = stg;
-        this.syncStageUnlockVisibility();
-        void this.sceneManager?.setEnvironmentStage(stg);
-      });
-    });
-
     byId<HTMLButtonElement>('btn-start-game').addEventListener('click', () => {
       this.hasSubmittedRun = false;
       this.lastSubmittedId = null;
-      const startStage: StoryStage =
-        this.selectedMode === 'duel' && this.stage2Unlocked ? this.selectedStoryStage : 1;
-      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty, startStage);
+      // A match started from the menu always begins at Stage 1; Stage 2 is reached by winning it.
+      this.engine?.startNewGame(this.selectedMode, this.selectedDifficulty, 1);
     });
 
-    // Pause menu toggles
+    // HUD controls (classic HUD)
+    this.btnHudMute.addEventListener('click', () => {
+      this.engine?.toggleMute();
+    });
+
+    this.btnHudBloom.addEventListener('click', () => {
+      this.setBloom(!this.bloomOn);
+    });
+
+    byId<HTMLButtonElement>('btn-hud-pause').addEventListener('click', () => {
+      this.engine?.pauseGame();
+    });
+
+    // Health bars HUD: pause icon and pause-menu toggles
+    this.btnHudPauseIcon.addEventListener('click', () => {
+      this.engine?.pauseGame();
+      // Leave the icon so Space (serve) cannot re-trigger it; focus moves into the menu once shown.
+      this.btnHudPauseIcon.blur();
+      this.focusResumeOnPause = true;
+    });
+
     this.btnToggleSfx.addEventListener('click', () => {
       this.engine?.toggleMute();
     });
 
     this.btnToggleBloom.addEventListener('click', () => {
-      this.bloomOn = !this.bloomOn;
-      this.sceneManager?.setBloomEnabled(this.bloomOn);
-      this.setToggleState(this.btnToggleBloom, this.bloomOn);
+      this.setBloom(!this.bloomOn);
     });
 
-    const btnHudPause = byId<HTMLButtonElement>('btn-hud-pause');
-    btnHudPause.addEventListener('click', () => {
-      this.engine?.pauseGame();
-      // Leave the icon so Space (serve) cannot re-trigger it; focus moves into the menu once shown.
-      btnHudPause.blur();
-      this.focusResumeOnPause = true;
+    // Settings (main menu)
+    this.btnOpenSettings.addEventListener('click', () => this.openSettings());
+    byId<HTMLButtonElement>('btn-close-settings').addEventListener('click', () =>
+      this.closeSettings()
+    );
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.screenSettings.classList.contains('hidden')) {
+        e.preventDefault();
+        this.closeSettings();
+      }
+    });
+
+    this.btnSettingBars.addEventListener('click', () => {
+      this.setHudStyle(this.hudStyle === 'bars' ? 'classic' : 'bars');
+    });
+
+    this.btnSettingSfx.addEventListener('click', () => {
+      this.engine?.toggleMute();
+    });
+
+    this.btnSettingBloom.addEventListener('click', () => {
+      this.setBloom(!this.bloomOn);
     });
 
     // Pause controls
@@ -221,8 +246,7 @@ class RobotPongApp {
     });
 
     byId<HTMLButtonElement>('btn-quit-menu').addEventListener('click', () => {
-      this.selectedStoryStage = 1;
-      this.syncStageUnlockVisibility();
+      // returnToMenu also switches the arena back to Stage 1.
       this.engine?.returnToMenu();
       void this.refreshMenuLeaderboard(this.selectedMode);
     });
@@ -246,8 +270,6 @@ class RobotPongApp {
     });
 
     byId<HTMLButtonElement>('btn-go-menu').addEventListener('click', () => {
-      this.selectedStoryStage = 1;
-      this.syncStageUnlockVisibility();
       this.engine?.returnToMenu();
       void this.refreshMenuLeaderboard(this.selectedMode);
     });
@@ -298,7 +320,6 @@ class RobotPongApp {
             } catch {
               // Ignore storage quota errors
             }
-            this.syncStageUnlockVisibility();
           },
         }
       );
@@ -334,6 +355,12 @@ class RobotPongApp {
     this.screenMenu.classList.toggle('hidden', !isMenu);
     this.hudEl.classList.toggle('hidden', !isPlaying && !isPaused);
     this.screenPause.classList.toggle('hidden', !isPaused);
+    if (!isMenu && !this.screenSettings.classList.contains('hidden')) {
+      this.screenSettings.classList.add('hidden');
+    }
+    const barsHud = this.hudStyle === 'bars';
+    this.hudEl.classList.toggle('hud--bars', barsHud);
+    this.screenPause.classList.toggle('pause--bars', barsHud);
     if (this.focusResumeOnPause) {
       this.focusResumeOnPause = false;
       if (isPaused) byId<HTMLButtonElement>('btn-resume').focus();
@@ -355,9 +382,11 @@ class RobotPongApp {
     this.hudRally.textContent = String(snap.rally);
     this.hudBestRally.textContent = String(snap.bestRally);
     this.hudSmashBar.style.width = `${Math.round(snap.smashCharge * 100)}%`;
+    this.btnHudMute.textContent = snap.muted ? 'SFX OFF' : 'SFX ON';
     if (this.lastMuted !== snap.muted) {
       this.lastMuted = snap.muted;
       this.setToggleState(this.btnToggleSfx, !snap.muted);
+      this.setToggleState(this.btnSettingSfx, !snap.muted);
     }
     if (this.lastSavedOneToOne !== snap.oneToOneMode) {
       this.lastSavedOneToOne = snap.oneToOneMode;
@@ -373,7 +402,8 @@ class RobotPongApp {
       this.hudPhaseBadge.textContent = `PHASE ${snap.threatPhase.phase} // ${snap.threatPhase.name}`;
       this.hudPhaseBadge.style.color = snap.threatPhase.accentHex;
       this.hudArcadeShields.classList.remove('hidden');
-      this.setStoryHudVisible(false);
+      this.hudDuelScore.classList.add('hidden');
+      this.setStoryBarsActive(false);
 
       let pips = '';
       for (let i = 0; i < snap.maxShields; i++) {
@@ -387,8 +417,16 @@ class RobotPongApp {
           : `STORY MODE // ${snap.difficulty.toUpperCase()}`;
       this.hudPhaseBadge.style.color = snap.threatPhase.accentHex;
       this.hudArcadeShields.classList.add('hidden');
-      this.setStoryHudVisible(true);
-      this.renderHealthBars(snap.playerPoints, snap.robotPoints);
+      if (barsHud) {
+        this.hudDuelScore.classList.add('hidden');
+        this.setStoryBarsActive(true);
+        this.renderHealthBars(snap.playerPoints, snap.robotPoints);
+      } else {
+        this.setStoryBarsActive(false);
+        this.hudDuelScore.classList.remove('hidden');
+        this.hudPPts.textContent = String(snap.playerPoints);
+        this.hudRPts.textContent = String(snap.robotPoints);
+      }
     }
 
     // Serve prompt (bottom edge only — zero center-screen callouts)
@@ -455,13 +493,45 @@ class RobotPongApp {
     }
   }
 
-  private setStoryHudVisible(visible: boolean): void {
-    this.hudEl.classList.toggle('hud--story', visible);
-    this.hudHealth.classList.toggle('hidden', !visible);
-    if (!visible) {
-      this.lastStoryPoints = null;
-      this.lastHealthKey = '';
+  /** Story mode with the health bars HUD. Off in Arcade and in the classic HUD. */
+  private setStoryBarsActive(active: boolean): void {
+    this.hudEl.classList.toggle('hud--story', active);
+    if (!active && (this.lastStoryPoints || this.lastHealthKey)) this.resetHealthBarTracking();
+  }
+
+  private resetHealthBarTracking(): void {
+    this.lastStoryPoints = null;
+    this.lastHealthKey = '';
+    this.clearHitReactions();
+  }
+
+  private setHudStyle(style: HudStyle): void {
+    this.hudStyle = style;
+    this.setToggleState(this.btnSettingBars, style === 'bars');
+    this.resetHealthBarTracking();
+    try {
+      window.localStorage.setItem(HUD_STYLE_STORAGE_KEY, style);
+    } catch {
+      // Ignore storage restrictions; the choice still applies for this session
     }
+  }
+
+  private setBloom(on: boolean): void {
+    this.bloomOn = on;
+    this.sceneManager?.setBloomEnabled(on);
+    this.btnHudBloom.textContent = on ? 'BLOOM ON' : 'BLOOM OFF';
+    this.setToggleState(this.btnToggleBloom, on);
+    this.setToggleState(this.btnSettingBloom, on);
+  }
+
+  private openSettings(): void {
+    this.screenSettings.classList.remove('hidden');
+    this.btnSettingBars.focus();
+  }
+
+  private closeSettings(): void {
+    this.screenSettings.classList.add('hidden');
+    this.btnOpenSettings.focus();
   }
 
   private renderHealthBars(playerPoints: number, robotPoints: number): void {

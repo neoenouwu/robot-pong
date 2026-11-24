@@ -53,17 +53,32 @@
           <div class="hud-panel hud-center-panel">
             <div id="hud-phase-badge" class="phase-badge">PHASE 1 // RECON</div>
             <div id="hud-arcade-shields" class="shields-row" aria-label="Integrity Shields"></div>
+            <div id="hud-duel-score" class="duel-score hidden">
+              <span class="duel-you">YOU <strong id="hud-p-pts">0</strong></span>
+              <span class="duel-sep">:</span>
+              <span class="duel-ai"><strong id="hud-r-pts">0</strong> ROBOT</span>
+            </div>
           </div>
 
           <div class="hud-actions">
-            <button id="btn-hud-pause" class="pause-btn" type="button" title="Pause (Esc)" aria-label="Pause">
+            <button id="btn-hud-mute" class="icon-btn" type="button" title="Mute / Unmute (M)">
+              SFX ON
+            </button>
+            <button id="btn-hud-bloom" class="icon-btn" type="button" title="Toggle Neon Bloom">
+              BLOOM ON
+            </button>
+            <button id="btn-hud-pause" class="icon-btn" type="button" title="Pause (Esc)">
+              PAUSE
+            </button>
+            <!-- Health bars HUD only (hidden in the classic HUD) -->
+            <button id="btn-hud-pause-icon" class="pause-btn" type="button" title="Pause (Esc)" aria-label="Pause">
               <span class="pause-glyph" aria-hidden="true"></span>
             </button>
           </div>
         </div>
 
-        <!-- Story mode health bars: YOU on the left, ROBOT on the right -->
-        <div id="hud-health" class="health-hud hidden">
+        <!-- Health bars HUD only: YOU on the left, ROBOT on the right -->
+        <div id="hud-health" class="health-hud">
           <div id="hud-health-player" class="health-bar health-bar--player" role="img" aria-label="You: 5 of 5">
             <div class="health-bezel" aria-hidden="true"></div>
           </div>
@@ -130,18 +145,12 @@
               </div>
             </div>
 
-            <!-- Hidden until Stage 2 is unlocked by beating Stage 1 -->
-            <div id="story-stage-wrap" class="diff-row hidden">
-              <span class="hud-label">STAGE</span>
-              <div class="diff-pills">
-                <button class="stage-btn active" data-stage="1" type="button">STAGE 1</button>
-                <button class="stage-btn" data-stage="2" type="button">STAGE 2</button>
-              </div>
-            </div>
-
             <div class="menu-cta-row">
               <button id="btn-start-game" class="btn btn-primary btn-lg" type="button">
                 PLAY
+              </button>
+              <button id="btn-open-settings" class="btn btn-secondary btn-lg" type="button">
+                SETTINGS
               </button>
             </div>
 
@@ -172,7 +181,8 @@
             <label for="input-sensitivity">PADDLE SENSITIVITY</label>
             <input id="input-sensitivity" type="range" min="0.7" max="1.6" step="0.05" value="1.0" />
           </div>
-          <div class="toggle-list">
+          <!-- Health bars HUD only (hidden in the classic HUD) -->
+          <div class="toggle-list pause-toggles">
             <button id="btn-toggle-sfx" class="toggle-row" type="button" role="switch" aria-checked="true" title="Mute / Unmute (M)">
               <span class="toggle-name">SFX</span>
               <span class="toggle-state" aria-hidden="true">ON</span>
@@ -186,6 +196,30 @@
             <button id="btn-resume" class="btn btn-primary" type="button">RESUME</button>
             <button id="btn-restart-pause" class="btn btn-secondary" type="button">RESTART</button>
             <button id="btn-quit-menu" class="btn btn-ghost" type="button">MENU</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings (opened from the main menu) -->
+      <div id="screen-settings" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="terminal-card compact-card">
+          <h2 id="settings-title" class="modal-title">SETTINGS</h2>
+          <div class="toggle-list">
+            <button id="btn-setting-bars" class="toggle-row" type="button" role="switch" aria-checked="false">
+              <span class="toggle-name">HEALTH BARS</span>
+              <span class="toggle-state" aria-hidden="true">OFF</span>
+            </button>
+            <button id="btn-setting-sfx" class="toggle-row" type="button" role="switch" aria-checked="true" title="Mute / Unmute (M)">
+              <span class="toggle-name">SFX</span>
+              <span class="toggle-state" aria-hidden="true">ON</span>
+            </button>
+            <button id="btn-setting-bloom" class="toggle-row" type="button" role="switch" aria-checked="true">
+              <span class="toggle-name">BLOOM</span>
+              <span class="toggle-state" aria-hidden="true">ON</span>
+            </button>
+          </div>
+          <div class="modal-actions">
+            <button id="btn-close-settings" class="btn btn-secondary" type="button">CLOSE</button>
           </div>
         </div>
       </div>
