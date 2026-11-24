@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>ROBOT PONG // 3D Table Tennis</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
@@ -17,7 +17,7 @@
       <div id="fx-letterbox-top" class="fx-letterbox top" aria-hidden="true"></div>
       <div id="fx-letterbox-bottom" class="fx-letterbox bottom" aria-hidden="true"></div>
       <div id="cutscene-skip-hint" class="cutscene-skip hidden">
-        PRESS <kbd>SPACE</kbd> TO SKIP
+        <span class="ctl-mouse">PRESS <kbd>SPACE</kbd> TO SKIP</span><span class="ctl-touch">TAP TO SKIP</span>
       </div>
 
       <!-- Loading Overlay -->
@@ -89,14 +89,14 @@
 
         <!-- Subtle Bottom Serve Prompt (no center-screen callout cards!) -->
         <div id="hud-serve-prompt" class="serve-prompt hidden">
-          CLICK OR PRESS <kbd>SPACE</kbd> TO SERVE
+          <span class="ctl-mouse">CLICK OR PRESS <kbd>SPACE</kbd> TO SERVE</span><span class="ctl-touch">TAP TO SERVE</span>
         </div>
 
         <div class="hud-bottom">
           <div class="hud-panel hud-meter-panel">
             <div class="meter-header">
               <span>SMASH CHARGE</span>
-              <span class="meter-key"><kbd>HOLD LMB</kbd> / <kbd>SPACE</kbd></span>
+              <span class="meter-key"><span class="ctl-mouse"><kbd>HOLD LMB</kbd> / <kbd>SPACE</kbd></span><span class="ctl-touch"><kbd>HOLD SMASH</kbd></span></span>
             </div>
             <div class="meter-track">
               <div id="hud-smash-bar" class="meter-fill smash-fill" style="width: 0%"></div>
@@ -106,6 +106,12 @@
           <div class="hud-tip-pill">
             SWIPE FAST TO CURVE &bull; HIT GREEN DATA RINGS FOR +500
           </div>
+        </div>
+
+        <!-- Touch screens only (display: none elsewhere): hold buttons for smash and slow-mo -->
+        <div id="touch-controls" class="touch-controls">
+          <button id="btn-touch-slow" class="touch-btn touch-btn--slow" type="button" aria-label="Slow-mo (hold)">SLOW</button>
+          <button id="btn-touch-smash" class="touch-btn touch-btn--smash" type="button" aria-label="Smash (hold)">SMASH</button>
         </div>
       </div>
 
@@ -155,9 +161,12 @@
             </div>
 
             <div class="controls-strip">
-              <div><kbd>MOUSE</kbd> Move</div>
-              <div><kbd>LMB</kbd> / <kbd>SPACE</kbd> Smash</div>
-              <div><kbd>RMB</kbd> / <kbd>SHIFT</kbd> Slow-Mo</div>
+              <div class="ctl-mouse"><kbd>MOUSE</kbd> Move</div>
+              <div class="ctl-mouse"><kbd>LMB</kbd> / <kbd>SPACE</kbd> Smash</div>
+              <div class="ctl-mouse"><kbd>RMB</kbd> / <kbd>SHIFT</kbd> Slow-Mo</div>
+              <div class="ctl-touch"><kbd>DRAG</kbd> Move</div>
+              <div class="ctl-touch"><kbd>SMASH</kbd> / <kbd>2ND FINGER</kbd> Smash</div>
+              <div class="ctl-touch"><kbd>SLOW</kbd> Slow-Mo</div>
             </div>
           </section>
 

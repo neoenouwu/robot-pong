@@ -207,6 +207,18 @@ class RobotPongApp {
       this.setBloom(!this.bloomOn);
     });
 
+    // On-screen hold buttons (shown on touch screens only; see style.css)
+    this.bindHoldButton(byId<HTMLButtonElement>('btn-touch-smash'), {
+      press: () => this.engine?.startSmashCharge(),
+      release: () => this.engine?.releaseSmashCharge(),
+      cancel: () => this.engine?.cancelSmashCharge(),
+    });
+    this.bindHoldButton(byId<HTMLButtonElement>('btn-touch-slow'), {
+      press: () => this.engine?.setSlowMoHeld(true),
+      release: () => this.engine?.setSlowMoHeld(false),
+      cancel: () => this.engine?.setSlowMoHeld(false),
+    });
+
     // Settings (main menu)
     this.btnOpenSettings.addEventListener('click', () => this.openSettings());
     byId<HTMLButtonElement>('btn-close-settings').addEventListener('click', () =>
@@ -283,6 +295,40 @@ class RobotPongApp {
     byId<HTMLButtonElement>('btn-reload-page').addEventListener('click', () => {
       window.location.reload();
     });
+  }
+
+  /**
+   * A button that acts while held: press on pointer down, release on pointer up, cancel when the
+   * browser takes the pointer away. The pointer is captured so sliding off the button still ends it.
+   */
+  private bindHoldButton(
+    btn: HTMLButtonElement,
+    actions: { press: () => void; release: () => void; cancel: () => void }
+  ): void {
+    let heldBy: number | null = null;
+    const end = (e: PointerEvent, cancelled: boolean): void => {
+      if (heldBy !== e.pointerId) return;
+      heldBy = null;
+      btn.classList.remove('is-held');
+      if (cancelled) actions.cancel();
+      else actions.release();
+    };
+    btn.addEventListener('pointerdown', (e) => {
+      if (heldBy !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      e.preventDefault();
+      heldBy = e.pointerId;
+      try {
+        btn.setPointerCapture(e.pointerId);
+      } catch {
+        // Pointer already gone
+      }
+      btn.classList.add('is-held');
+      actions.press();
+    });
+    btn.addEventListener('pointerup', (e) => end(e, false));
+    btn.addEventListener('pointercancel', (e) => end(e, true));
+    btn.addEventListener('lostpointercapture', (e) => end(e, true));
+    btn.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
   private async initArena(): Promise<void> {

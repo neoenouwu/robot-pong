@@ -1372,3 +1372,258 @@ kbd {
     --health-skew: 22deg;
   }
 }
+
+/* ======================================================================
+   Touch screens. Every rule below is either inside @media (pointer: coarse)
+   (true only when the primary pointer is a finger, never for a mouse, at any
+   window size) or targets elements that exist only for touch and are
+   display: none by default. Mouse-and-keyboard layouts are unchanged.
+   ====================================================================== */
+
+/* Touch-only wording and controls: off unless the media query below turns them on */
+.ctl-touch,
+.touch-controls {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+
+  /* Wording: touch hints replace mouse and keyboard hints */
+  .ctl-mouse {
+    display: none;
+  }
+  span.ctl-touch {
+    display: inline;
+  }
+  div.ctl-touch {
+    display: block;
+  }
+
+  /* Comfortable tap targets; no double-tap zoom on controls */
+  button,
+  input {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn,
+  .icon-btn,
+  .toggle-row {
+    min-height: 44px;
+  }
+  .diff-btn {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+  .mode-btn {
+    min-height: 56px;
+  }
+  input[type='range'] {
+    height: 32px;
+  }
+  /* 16px stops iOS Safari zooming the page when the name field is focused */
+  .submit-row input {
+    font-size: 16px;
+    min-width: 0;
+  }
+
+  /* ---- HUD (both styles) ---- */
+  #hud.hud,
+  #hud.hud--bars.hud--story {
+    --hud-pad-top: max(10px, env(safe-area-inset-top));
+    --hud-pad-x: max(12px, env(safe-area-inset-left), env(safe-area-inset-right));
+    --hud-pad-bottom: max(10px, env(safe-area-inset-bottom));
+    --pause-size: 44px;
+    padding: var(--hud-pad-top) var(--hud-pad-x) var(--hud-pad-bottom);
+  }
+
+  /* Pause is the only HUD button; sound and bloom switches live in the pause menu */
+  #hud #btn-hud-mute,
+  #hud #btn-hud-bloom,
+  #hud .hud-tip-pill {
+    display: none;
+  }
+  #screen-pause .pause-toggles {
+    display: flex;
+  }
+  #hud #btn-hud-pause {
+    min-width: 72px;
+  }
+
+  #hud .hud-meter-panel {
+    width: min(220px, 50vw);
+  }
+  #hud .meter-header {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+  }
+  #hud .meter-header > span {
+    white-space: nowrap;
+  }
+
+  /* Keep the serve prompt above the hold buttons */
+  #hud .serve-prompt {
+    margin-bottom: 36px;
+  }
+
+  /* Hold buttons, bottom-right corner, clear of the meter (left) and the serve prompt (above) */
+  .touch-controls {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    position: absolute;
+    right: var(--hud-pad-x);
+    bottom: var(--hud-pad-bottom);
+    pointer-events: none;
+  }
+  .touch-btn {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 50%;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--text-main);
+    background: rgba(4, 14, 10, 0.62);
+    border: 1px solid rgba(30, 255, 136, 0.5);
+    backdrop-filter: blur(6px);
+    pointer-events: auto;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    cursor: pointer;
+  }
+  .touch-btn--slow {
+    width: 56px;
+    height: 56px;
+  }
+  .touch-btn--smash {
+    width: 72px;
+    height: 72px;
+    color: #ffe3c2;
+    border-color: rgba(255, 156, 56, 0.75);
+    background: rgba(40, 20, 4, 0.6);
+  }
+  .touch-btn.is-held {
+    background: rgba(30, 255, 136, 0.28);
+    border-color: var(--emerald);
+    box-shadow: 0 0 16px rgba(30, 255, 136, 0.45);
+  }
+  .touch-btn--smash.is-held {
+    background: rgba(255, 156, 56, 0.34);
+    border-color: var(--amber);
+    box-shadow: 0 0 16px rgba(255, 156, 56, 0.55);
+  }
+
+  .cutscene-skip {
+    right: max(22px, env(safe-area-inset-right));
+    bottom: max(20px, env(safe-area-inset-bottom));
+  }
+
+  /* ---- Menus and modals ---- */
+  .menu-overlay {
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  .menu-grid {
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* Personal scores stay reachable on a narrow screen */
+  .menu-leaderboard-preview {
+    display: block;
+  }
+
+  .modal-backdrop {
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+      max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* Auto margins centre the card but let a tall one scroll instead of being cut off */
+  .modal-backdrop > .terminal-card {
+    margin: auto;
+  }
+}
+
+/* Phone held upright: score and pause on the first row, mode panel below */
+@media (pointer: coarse) and (max-width: 640px) {
+  .hud-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'score actions'
+      'center center';
+    gap: 8px;
+  }
+  .hud-score-panel {
+    grid-area: score;
+    min-width: 0;
+  }
+  .hud-center-panel {
+    grid-area: center;
+    justify-self: center;
+    min-width: 0;
+    padding: 6px 14px;
+  }
+  .hud-actions,
+  #hud.hud--bars.hud--story .hud-actions {
+    grid-area: actions;
+  }
+  .hud-panel {
+    padding: 8px 12px;
+  }
+  .hud-big-num {
+    font-size: 24px;
+  }
+  .terminal-card {
+    padding: 18px 16px;
+  }
+  /* Scores above the menu card, so the card (and PLAY) does not move when the list loads */
+  .menu-leaderboard-preview {
+    order: -1;
+  }
+  #menu-lb-list {
+    max-height: 28vh;
+    overflow-y: auto;
+  }
+  /* Game over card at the top: the name field stays put while the list loads and stays clear
+     of the on-screen keyboard */
+  #screen-gameover > .terminal-card {
+    margin: 0 auto auto;
+  }
+}
+
+/* Phone held sideways: little height, so keep panels compact */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  .hud-panel {
+    padding: 6px 12px;
+  }
+  .hud-big-num {
+    font-size: 22px;
+  }
+  .hud-score-panel,
+  .hud-center-panel {
+    min-width: 0;
+  }
+  .menu-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr);
+  }
+  .menu-left,
+  .menu-leaderboard-preview {
+    padding: 12px 14px;
+  }
+  .terminal-card {
+    padding: 16px 18px;
+  }
+  .modal-title {
+    font-size: 22px;
+    margin-bottom: 10px;
+  }
+}
