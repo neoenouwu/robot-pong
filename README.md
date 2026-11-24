@@ -6,14 +6,34 @@
 
 ## Controls
 
+### Mouse and keyboard
+
 | Input | Action |
 | --- | --- |
 | Mouse | Move the paddle |
 | Left click / Space | Serve; hold to charge a smash |
-| Right click / Shift | Slow-mo |
 | C | Toggle 1:1 paddle tracking |
 | M | Mute / unmute |
 | Esc / P | Pause |
+
+### Touch screens
+
+| Input | Action |
+| --- | --- |
+| Drag | Move the paddle |
+| Tap | Serve |
+| Hold SMASH, or a second finger | Charge a smash; release to swing |
+| PAUSE | Pause |
+
+Manual slow-mo is off by default. Turn on **Slow-Mo** in Settings to use it: hold right click or Shift, or the SLOW button on a touch screen.
+
+## Settings
+
+Open **Settings** from the main menu.
+
+- **Health Bars** — in Story, show two health bars instead of the score readout.
+- **Slow-Mo** — enable the manual slow-mo controls.
+- **SFX** and **Bloom** — sound effects and the glow effect.
 
 ## Modes
 

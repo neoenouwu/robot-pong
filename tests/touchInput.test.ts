@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyTouchReach,
   isTouchTap,
   mapTouchToNdc,
+  TOUCH_EDGE_BAND,
   TOUCH_PORTRAIT_MAX_FOV,
   TOUCH_PORTRAIT_MAX_PULLBACK,
   TOUCH_REACH_X,
   TOUCH_TAP_MAX_MS,
   TOUCH_TAP_SLOP_PX,
+  touchEdgeReachNdc,
   touchPortraitCameraPullback,
   touchPortraitFov,
   touchReachGain,
@@ -221,23 +222,68 @@ describe('touchPortraitFov', () => {
   });
 });
 
-describe('touch reach on narrow screens', () => {
-  it('scales sideways travel so the screen edge reaches the full paddle range', () => {
-    const visibleHalf = 0.5;
-    const gain = touchReachGain(visibleHalf);
-    expect(gain).toBeCloseTo(TOUCH_REACH_X / visibleHalf, 9);
-    expect(applyTouchReach(0.5, 0, gain)).toBeCloseTo(TOUCH_REACH_X, 9);
-    expect(applyTouchReach(-0.5, 0, gain)).toBeCloseTo(-TOUCH_REACH_X, 9);
-    // The screen centre stays where it is
-    expect(applyTouchReach(0.1, 0.1, gain)).toBeCloseTo(0.1, 9);
+describe('touchReachGain', () => {
+  it('is how far past the edge the aim must go to reach the target distance', () => {
+    expect(touchReachGain(0.5)).toBeCloseTo(TOUCH_REACH_X / 0.5, 9);
+    expect(touchReachGain(0.5, 0.8)).toBeCloseTo(1.6, 9);
   });
 
-  it('never shrinks travel on wide screens and ignores bad input', () => {
+  it('never goes below 1 and ignores bad input', () => {
     expect(touchReachGain(2)).toBe(1);
     expect(touchReachGain(TOUCH_REACH_X)).toBe(1);
     expect(touchReachGain(0)).toBe(1);
     expect(touchReachGain(Number.NaN)).toBe(1);
-    expect(applyTouchReach(0.7, 0, 1)).toBe(0.7);
+    expect(touchReachGain(0.5, Number.NaN)).toBe(1);
+  });
+});
+
+describe('touchEdgeReachNdc', () => {
+  const EDGE = 1.6;
+  const inner = 1 - TOUCH_EDGE_BAND;
+
+  it('is the identity across the middle of the screen', () => {
+    for (let x = -inner; x <= inner + 1e-12; x += 0.01) {
+      expect(touchEdgeReachNdc(x, EDGE)).toBe(x);
+    }
+  });
+
+  it('reaches the full edge aim exactly at the edge', () => {
+    expect(touchEdgeReachNdc(1, EDGE)).toBeCloseTo(EDGE, 12);
+    expect(touchEdgeReachNdc(-1, EDGE)).toBeCloseTo(-EDGE, 12);
+    // Beyond the edge (finger off the canvas) it holds at the edge aim
+    expect(touchEdgeReachNdc(1.3, EDGE)).toBeCloseTo(EDGE, 12);
+  });
+
+  it('is continuous with matching slope at the band boundary (no jump, no kink)', () => {
+    const h = 1e-6;
+    const at = touchEdgeReachNdc(inner, EDGE);
+    expect(touchEdgeReachNdc(inner + h, EDGE) - at).toBeCloseTo(h, 9);
+    expect(at - touchEdgeReachNdc(inner - h, EDGE)).toBeCloseTo(h, 9);
+  });
+
+  it('only ever increases and runs ahead of the finger inside the band', () => {
+    let prev = -Infinity;
+    for (let x = -1; x <= 1 + 1e-12; x += 0.001) {
+      const v = touchEdgeReachNdc(x, EDGE);
+      expect(v).toBeGreaterThan(prev);
+      if (Math.abs(x) > inner + 1e-9) expect(Math.abs(v)).toBeGreaterThan(Math.abs(x));
+      prev = v;
+    }
+  });
+
+  it('is symmetric about the centre', () => {
+    for (const x of [0, 0.3, 0.75, 0.8, 0.9, 0.99, 1]) {
+      expect(touchEdgeReachNdc(-x, EDGE)).toBeCloseTo(-touchEdgeReachNdc(x, EDGE), 12);
+    }
+  });
+
+  it('is the identity everywhere when no extra reach is needed, and safe on bad input', () => {
+    for (const x of [-1, -0.9, 0, 0.5, 0.95, 1]) {
+      expect(touchEdgeReachNdc(x, 1)).toBe(x);
+      expect(touchEdgeReachNdc(x, 0.7)).toBe(x);
+      expect(touchEdgeReachNdc(x, Number.NaN)).toBe(x);
+    }
+    expect(touchEdgeReachNdc(Number.NaN, EDGE)).toBe(0);
   });
 });
 

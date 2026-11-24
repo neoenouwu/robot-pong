@@ -7,6 +7,11 @@ import {
 import { GameEngine, type HudSnapshot } from './game/gameEngine';
 import { computeStoryHealthBars, type HealthBarSide } from './game/healthBars';
 import { HUD_STYLE_STORAGE_KEY, parseHudStyle, type HudStyle } from './game/hudStyle';
+import {
+  parseSlowMoControls,
+  serializeSlowMoControls,
+  SLOWMO_CONTROLS_STORAGE_KEY,
+} from './game/slowMoSetting';
 import { getRobotSkin } from './game/robotSkins';
 import { SceneManager } from './game/sceneManager';
 import {
@@ -56,6 +61,7 @@ class RobotPongApp {
   private lastStoryPoints: { player: number; robot: number } | null = null;
   private lastHealthKey = '';
   private hudStyle: HudStyle = 'classic';
+  private slowMoControls = false;
 
   // DOM refs
   private readonly canvasContainer = byId<HTMLDivElement>('canvas-container');
@@ -100,6 +106,8 @@ class RobotPongApp {
   private readonly btnSettingBars = byId<HTMLButtonElement>('btn-setting-bars');
   private readonly btnSettingSfx = byId<HTMLButtonElement>('btn-setting-sfx');
   private readonly btnSettingBloom = byId<HTMLButtonElement>('btn-setting-bloom');
+  private readonly btnSettingSlowMo = byId<HTMLButtonElement>('btn-setting-slowmo');
+  private readonly appEl = byId<HTMLDivElement>('app');
   private lastMuted: boolean | null = null;
   private focusResumeOnPause = false;
 
@@ -133,6 +141,14 @@ class RobotPongApp {
       this.hudStyle = 'classic';
     }
     this.setToggleState(this.btnSettingBars, this.hudStyle === 'bars');
+    try {
+      this.slowMoControls = parseSlowMoControls(
+        window.localStorage.getItem(SLOWMO_CONTROLS_STORAGE_KEY)
+      );
+    } catch {
+      this.slowMoControls = false;
+    }
+    this.applySlowMoControls();
     this.buildHealthSegments(this.hudHealthPlayer);
     this.buildHealthSegments(this.hudHealthRobot);
     this.bindUiEvents();
@@ -233,6 +249,10 @@ class RobotPongApp {
 
     this.btnSettingBars.addEventListener('click', () => {
       this.setHudStyle(this.hudStyle === 'bars' ? 'classic' : 'bars');
+    });
+
+    this.btnSettingSlowMo.addEventListener('click', () => {
+      this.setSlowMoControls(!this.slowMoControls);
     });
 
     this.btnSettingSfx.addEventListener('click', () => {
@@ -369,6 +389,7 @@ class RobotPongApp {
           },
         }
       );
+      this.applySlowMoControls();
       this.engine.setReadyMenu();
       this.engine.startLoop();
 
@@ -560,6 +581,23 @@ class RobotPongApp {
     } catch {
       // Ignore storage restrictions; the choice still applies for this session
     }
+  }
+
+  private setSlowMoControls(enabled: boolean): void {
+    this.slowMoControls = enabled;
+    this.applySlowMoControls();
+    try {
+      window.localStorage.setItem(SLOWMO_CONTROLS_STORAGE_KEY, serializeSlowMoControls(enabled));
+    } catch {
+      // Ignore storage restrictions; the choice still applies for this session
+    }
+  }
+
+  /** Applies the manual slow-mo setting to the engine, the switch and the slow-mo hints/button. */
+  private applySlowMoControls(): void {
+    this.setToggleState(this.btnSettingSlowMo, this.slowMoControls);
+    this.appEl.classList.toggle('slowmo-on', this.slowMoControls);
+    this.engine?.setManualSlowMoEnabled(this.slowMoControls);
   }
 
   private setBloom(on: boolean): void {

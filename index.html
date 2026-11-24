@@ -108,9 +108,10 @@
           </div>
         </div>
 
-        <!-- Touch screens only (display: none elsewhere): hold buttons for smash and slow-mo -->
+        <!-- Touch screens only (display: none elsewhere): hold buttons for smash and slow-mo.
+             SLOW is also hidden unless the SLOW-MO setting is on. -->
         <div id="touch-controls" class="touch-controls">
-          <button id="btn-touch-slow" class="touch-btn touch-btn--slow" type="button" aria-label="Slow-mo (hold)">SLOW</button>
+          <button id="btn-touch-slow" class="touch-btn touch-btn--slow slowmo-only" type="button" aria-label="Slow-mo (hold)">SLOW</button>
           <button id="btn-touch-smash" class="touch-btn touch-btn--smash" type="button" aria-label="Smash (hold)">SMASH</button>
         </div>
       </div>
@@ -163,10 +164,10 @@
             <div class="controls-strip">
               <div class="ctl-mouse"><kbd>MOUSE</kbd> Move</div>
               <div class="ctl-mouse"><kbd>LMB</kbd> / <kbd>SPACE</kbd> Smash</div>
-              <div class="ctl-mouse"><kbd>RMB</kbd> / <kbd>SHIFT</kbd> Slow-Mo</div>
+              <div class="ctl-mouse slowmo-only"><kbd>RMB</kbd> / <kbd>SHIFT</kbd> Slow-Mo</div>
               <div class="ctl-touch"><kbd>DRAG</kbd> Move</div>
               <div class="ctl-touch"><kbd>SMASH</kbd> / <kbd>2ND FINGER</kbd> Smash</div>
-              <div class="ctl-touch"><kbd>SLOW</kbd> Slow-Mo</div>
+              <div class="ctl-touch slowmo-only"><kbd>SLOW</kbd> Slow-Mo</div>
             </div>
           </section>
 
@@ -216,6 +217,10 @@
           <div class="toggle-list">
             <button id="btn-setting-bars" class="toggle-row" type="button" role="switch" aria-checked="false">
               <span class="toggle-name">HEALTH BARS</span>
+              <span class="toggle-state" aria-hidden="true">OFF</span>
+            </button>
+            <button id="btn-setting-slowmo" class="toggle-row" type="button" role="switch" aria-checked="false">
+              <span class="toggle-name">SLOW-MO</span>
               <span class="toggle-state" aria-hidden="true">OFF</span>
             </button>
             <button id="btn-setting-sfx" class="toggle-row" type="button" role="switch" aria-checked="true" title="Mute / Unmute (M)">

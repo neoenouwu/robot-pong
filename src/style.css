@@ -1380,6 +1380,12 @@ kbd {
    display: none by default. Mouse-and-keyboard layouts are unchanged.
    ====================================================================== */
 
+/* Manual slow-mo hints and the SLOW button exist only while the SLOW-MO setting is on
+   (main.ts sets .slowmo-on on #app) */
+#app:not(.slowmo-on) .slowmo-only {
+  display: none;
+}
+
 /* Touch-only wording and controls: off unless the media query below turns them on */
 .ctl-touch,
 .touch-controls {

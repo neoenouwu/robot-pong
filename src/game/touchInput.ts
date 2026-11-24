@@ -5,8 +5,9 @@
  * Scheme:
  * - The first finger on the play area steers. It does not charge a smash.
  * - The paddle is drawn a little above the steering finger so the finger does not hide it.
- * - On a narrow screen, sideways finger travel is scaled up so the screen edges reach as far as
- *   the paddle can go (see touchReachGain).
+ * - Sideways the paddle stays under the finger (1:1). Only in a narrow band at each screen edge
+ *   does it run ahead of the finger, so on a narrow screen the edge still reaches wide balls
+ *   (see touchEdgeReachNdc).
  * - While a steering finger is down, any further finger holds a smash charge; lifting it swings.
  * - A quick tap (any finger) serves when it is the player's serve.
  */
@@ -230,19 +231,37 @@ export function touchPortraitFov(aspect: number, baseFov: number): number {
 export const TOUCH_REACH_X = 1.25;
 
 /**
- * Horizontal gain for touch steering in 1:1 mode. `visibleHalfWidth` is half the width of the
- * strike plane that is on screen. On a wide screen the edges already reach far enough and the
- * gain is 1; on a phone held upright the paddle travels further than the finger so that the
- * screen edges reach `reach`.
+ * How far past the screen edge (in screen half-widths, so 1 = the edge itself) the finger at the
+ * edge has to aim for the paddle to reach `reach` metres from the screen centre, when half the
+ * screen spans `visibleHalfWidth` metres of the strike plane. Never less than 1 (wide screens
+ * already reach far enough).
  */
 export function touchReachGain(visibleHalfWidth: number, reach = TOUCH_REACH_X): number {
   if (!Number.isFinite(visibleHalfWidth) || visibleHalfWidth <= 0.05) return 1;
+  if (!Number.isFinite(reach)) return 1;
   return Math.max(1, reach / visibleHalfWidth);
 }
 
-/** Scales a projected paddle X away from the screen-centre X by `gain`. */
-export function applyTouchReach(projectedX: number, centerX: number, gain: number): number {
-  return centerX + (projectedX - centerX) * gain;
+/** Width of the edge band, in normalized screen units (0.24 = the outer 12% of the width). */
+export const TOUCH_EDGE_BAND = 0.24;
+
+/**
+ * Sideways aim for a finger at normalized screen X `ndcX` (-1..1). Across the middle of the
+ * screen the aim is the finger itself (true 1:1). Inside the outer `band` on each side it ramps
+ * ahead of the finger so the very edge aims at `edgeAim` (>= 1, see touchReachGain). The ramp is
+ * t^2 shaped: at the band boundary both the value and the slope match 1:1, so there is no jump or
+ * kink, and it only ever increases. Symmetric about the centre.
+ */
+export function touchEdgeReachNdc(ndcX: number, edgeAim: number, band = TOUCH_EDGE_BAND): number {
+  if (!Number.isFinite(ndcX)) return 0;
+  const x = Math.max(-1, Math.min(1, ndcX));
+  const extra = Number.isFinite(edgeAim) ? Math.max(0, edgeAim - 1) : 0;
+  const width = Math.min(1, Math.max(0, Number.isFinite(band) ? band : 0));
+  const inner = 1 - width;
+  const u = Math.abs(x);
+  if (extra === 0 || width === 0 || u <= inner) return x;
+  const t = (u - inner) / width;
+  return Math.sign(x) * (u + extra * t * t);
 }
 
 /** Maximum distance (metres) the gameplay camera moves back for a touch screen held upright. */

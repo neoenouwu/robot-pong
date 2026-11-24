@@ -27,8 +27,9 @@ import {
 } from './physics';
 import { SceneManager } from './sceneManager';
 import {
-  applyTouchReach,
   mapTouchToNdc,
+  TOUCH_REACH_X,
+  touchEdgeReachNdc,
   touchReachGain,
   touchSteerOffsetPx,
   TouchTracker,
@@ -157,6 +158,8 @@ export class GameEngine {
   private readonly touchTracker = new TouchTracker();
   private uiSmashHeld = false;
   private uiSlowMoHeld = false;
+  /** Manual slow-mo controls (right button, Shift, on-screen SLOW). Off unless the player opts in. */
+  private manualSlowMoEnabled = false;
   /** Last steering input was a finger (set only by touch; any mouse move clears it). */
   private touchSteering = false;
 
@@ -936,16 +939,12 @@ export class GameEngine {
     if (this.oneToOneMode) {
       // True 1:1 ray projection onto the strike plane with zero vertical auto-assist
       const projected = this.sceneManager.projectPointerToStrikePlane(
-        this.rawNdcX,
+        this.touchSteering ? this.touchAimNdcX(targetZ) : this.rawNdcX,
         this.rawNdcY,
         targetZ
       );
       if (projected) {
-        targetX = clamp(
-          this.touchSteering ? this.extendTouchReachX(projected.x, targetZ) : projected.x,
-          -1.35,
-          1.35
-        );
+        targetX = clamp(projected.x, -1.35, 1.35);
         targetY = clamp(projected.y, PLAYER_PADDLE.MIN_Y, 1.98);
       } else {
         targetX = clamp(this.rawNdcX * 1.25, -1.35, 1.35);
@@ -1074,8 +1073,8 @@ export class GameEngine {
     }
     this.audio.unlock();
     if (e.button === 2) {
-      // Right-click triggers Slow-Mo
-      this.slowMoRequested = true;
+      // Right-click triggers Slow-Mo (only when manual slow-mo controls are switched on)
+      if (this.manualSlowMoEnabled) this.slowMoRequested = true;
       return;
     }
     if (e.button === 0) {
@@ -1172,18 +1171,23 @@ export class GameEngine {
   }
 
   /**
-   * Touch, 1:1 mode: on a narrow screen the visible strike plane is narrower than the paddle's
-   * reach, so the finger's sideways movement is scaled up until the screen edges reach the same
-   * distance a wide screen gives.
+   * Touch, 1:1 mode: sideways screen position to aim the paddle at. 1:1 with the finger across the
+   * screen; only in the band at each edge does it run ahead, so the edge itself reaches
+   * TOUCH_REACH_X metres from the screen centre on the side the finger is on. On screens where
+   * the edge already reaches that far there is no band effect at all.
    */
-  private extendTouchReachX(projectedX: number, planeZ: number): number {
+  private touchAimNdcX(planeZ: number): number {
+    const ndcX = this.rawNdcX;
+    const side = ndcX < 0 ? -1 : 1;
     const sm = this.sceneManager;
     const center = sm.projectPointerToStrikePlane(0, this.rawNdcY, planeZ);
-    const left = sm.projectPointerToStrikePlane(-1, this.rawNdcY, planeZ);
-    const right = sm.projectPointerToStrikePlane(1, this.rawNdcY, planeZ);
-    if (!center || !left || !right) return projectedX;
-    const gain = touchReachGain((right.x - left.x) / 2);
-    return applyTouchReach(projectedX, center.x, gain);
+    const edge = sm.projectPointerToStrikePlane(side, this.rawNdcY, planeZ);
+    if (!center || !edge) return ndcX;
+    const edgeAim = touchReachGain(
+      Math.abs(edge.x - center.x),
+      TOUCH_REACH_X - side * center.x
+    );
+    return touchEdgeReachNdc(ndcX, edgeAim);
   }
 
   /** Lets go of every touch and on-screen hold (charge, slow-mo) without a swing. */
@@ -1225,10 +1229,30 @@ export class GameEngine {
     this.uiSmashHeld = false;
   }
 
-  /** On-screen slow-mo control: slow-mo is requested while held (rallies only, like Shift). */
+  /**
+   * On-screen slow-mo control: slow-mo is requested while held (rallies only, like Shift).
+   * Ignored while manual slow-mo controls are switched off.
+   */
   public setSlowMoHeld(held: boolean): void {
+    if (held && !this.manualSlowMoEnabled) return;
     if (held) this.audio.unlock();
     this.uiSlowMoHeld = held;
+  }
+
+  /**
+   * Switches the manual slow-mo controls (right mouse button, Shift, on-screen SLOW) on or off.
+   * Switching off releases anything currently held. Automatic near-miss slow-mo is unaffected.
+   */
+  public setManualSlowMoEnabled(enabled: boolean): void {
+    this.manualSlowMoEnabled = enabled;
+    if (!enabled) {
+      this.slowMoRequested = false;
+      this.uiSlowMoHeld = false;
+    }
+  }
+
+  public isManualSlowMoEnabled(): boolean {
+    return this.manualSlowMoEnabled;
   }
 
   /** Skips the Stage 2 cutscene when skipping is allowed (same as Space). */
@@ -1255,7 +1279,7 @@ export class GameEngine {
         this.isChargingSmash = true;
       }
     } else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
-      this.slowMoRequested = true;
+      if (this.manualSlowMoEnabled) this.slowMoRequested = true;
     } else if (e.code === 'Escape' || e.code === 'KeyP') {
       if (this.state === 'PAUSED') {
         this.resumeGame();
